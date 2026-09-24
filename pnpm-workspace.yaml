@@ -1,0 +1,6 @@
+allowBuilds:
+  esbuild: set this to true or false
+  msgpackr-extract: set this to true or false
+  workerd: set this to true or false
+minimumReleaseAgeExclude:
+  - dotenv@18.0.3

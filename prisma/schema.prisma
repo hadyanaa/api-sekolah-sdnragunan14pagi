@@ -1,0 +1,203 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -------------------------------------------------------------
+// ENUM PILIHAN STATUS SISWA (Fitur Native PostgreSQL)
+// -------------------------------------------------------------
+enum StatusSiswa {
+  AKTIF   // Masih bersekolah
+  ALUMNI  // Sudah lulus / alumni
+}
+
+// -------------------------------------------------------------
+// 1. TABEL SISWA (Tabel lama tetap ada + kolom status)
+// -------------------------------------------------------------
+model Siswa {
+  id          Int         @id @default(autoincrement())
+  nisn        String?     @unique
+  nis         String?
+  nama        String
+  gender      String?     // "L" / "P" atau "Laki-laki" / "Perempuan"
+  kelas       String?     // contoh: "1A", "6B"
+  tglLahir    DateTime?   @map("tgl_lahir")
+  tempatLahir String?     @map("tempat_lahir")
+  alamat      String?     @db.Text
+  namaOrtu    String?     @map("nama_ortu")
+  noTelpOrtu  String?     @map("no_telp_ortu")
+
+  // Kolom status sesuai permintaan (Pilihan: AKTIF atau ALUMNI)
+  status      StatusSiswa @default(AKTIF)
+  tahunLulus  String?     @map("tahun_lulus") // Opsional: tahun kelulusan untuk arsip alumni
+
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+
+  @@map("siswa")
+}
+
+// -------------------------------------------------------------
+// 2. TABEL VISI & MISI
+// -------------------------------------------------------------
+model VisiMisi {
+  id           Int      @id @default(autoincrement())
+  visi         String   @db.Text
+  misi         String   @db.Text
+  tujuan       String?  @db.Text
+  visiEkskul   String?  @map("visi_ekskul") @db.Text
+  misiEkskul   String?  @map("misi_ekskul") @db.Text
+  tujuanEkskul String?  @map("tujuan_ekskul") @db.Text
+  fungsiEkskul String?  @map("fungsi_ekskul") @db.Text
+
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("visi_misi")
+}
+
+// -------------------------------------------------------------
+// 3. TABEL SDM (Pendidik & Tenaga Kependidikan)
+// -------------------------------------------------------------
+model Sdm {
+  id               Int       @id @default(autoincrement())
+  nama             String
+  nipNikki         String?   @map("nip_nikki") // NIP (PNS) atau NIKKI (Non-PNS / Kontrak DKI)
+  gender           String?   // "L" / "P"
+  tglLahir         DateTime? @map("tgl_lahir")
+  tmt              DateTime? // Terhitung Mulai Tanggal
+  status           String?   // PNS, PPPK, Honorer, KKI, Tenaga Kontrak, dsb.
+  jabatan          String    // Kepala Sekolah, Guru Kelas, Guru PJOK, Tata Usaha, dsb.
+  deskripsiJabatan String?   @map("deskripsi_jabatan") @db.Text
+  pendidikan       String?   // S1, S2, D3, SMA
+  jurusan          String?   // PGSD, Penjas, Pendidikan Bahasa, dsb.
+  
+  // Tambahan analisis untuk profil website:
+  fotoUrl          String?   @map("foto_url")
+  noTelp           String?   @map("no_telp")
+  email            String?
+
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("sdm")
+}
+
+// -------------------------------------------------------------
+// 4. TABEL PRESTASI
+// -------------------------------------------------------------
+model Prestasi {
+  id            Int       @id @default(autoincrement())
+  nama          String    // Nama kejuaraan / lomba
+  namaPeserta   String?   @map("nama_peserta") // Tambahan analisis: nama siswa atau regu pemenang
+  tanggal       DateTime?
+  kategori      String?   // Akademik, Olahraga, Seni & Budaya, dll.
+  deskripsi     String?   @db.Text
+  peringkat     String?   // Juara 1, Juara 2, Medali Emas, dll.
+  tingkat       String?   // Sekolah, Kecamatan, Kota/Kabupaten, Provinsi, Nasional, Internasional
+  penyelenggara String?   // Dinas Pendidikan, Kemenpora, dll.
+  tempat        String?   // Lokasi penyelenggaraan lomba
+  linkFoto      String?   @map("link_foto")
+
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  @@map("prestasi")
+}
+
+// -------------------------------------------------------------
+// 5. TABEL EKSKUL (Ekstrakurikuler)
+// -------------------------------------------------------------
+model Ekskul {
+  id        Int      @id @default(autoincrement())
+  nama      String   // Pramuka, Futsal, Tari, Dokter Kecil, dsb.
+  pembina   String?  // Nama guru pembina / pelatih
+  pj        String?  // Penanggung Jawab
+  waktu     String?  // Jadwal kegiatan (misal: "Jumat, 14.00 - 16.00 WIB")
+  tujuan    String?  @db.Text
+  materi    String?  @db.Text
+  sifat     String?  // "Wajib" atau "Pilihan"
+  peserta   String?  // Sasaran peserta (misal: "Kelas 3 - 6")
+  linkFoto  String?  @map("link_foto") // Tambahan analisis: foto kegiatan/logo ekskul
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("ekskul")
+}
+
+// -------------------------------------------------------------
+// 6. TABEL AGENDA
+// -------------------------------------------------------------
+model Agenda {
+  id        Int      @id @default(autoincrement())
+  judul     String
+  deskripsi String?  @db.Text
+  kategori  String?  // Rapat, Ujian, Upacara, Kegiatan Sekolah, dsb.
+  tanggal   DateTime
+  waktu     String?  // Tambahan analisis: jam acara (misal: "08:00 - 12:00 WIB")
+  tempat    String?  // Tambahan analisis: lokasi (misal: "Aula SDN 14 Ragunan")
+  linkFoto  String?  @map("link_foto")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("agenda")
+}
+
+// -------------------------------------------------------------
+// 7. TABEL KALENDER AKADEMIK
+// -------------------------------------------------------------
+model KalenderAkademik {
+  id          Int       @id @default(autoincrement())
+  title       String    // Judul kegiatan (kompatibel dengan format FullCalendar / Event calendar)
+  start       DateTime  // Tanggal / waktu mulai
+  end         DateTime? // Tanggal / waktu selesai
+  kategori    String?   // Libur, Ujian, KBM, Hari Besar, dsb.
+  deskripsi   String?   @db.Text
+  tahunAjaran String?   @map("tahun_ajaran") // Misal: "2024/2025"
+  semester    String?   // "Ganjil" atau "Genap"
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@map("kalender_akademik")
+}
+
+// -------------------------------------------------------------
+// 8. TABEL PENGUMUMAN
+// -------------------------------------------------------------
+model Pengumuman {
+  id        Int      @id @default(autoincrement())
+  judul     String
+  isi       String?  @db.Text // Teks detail isi pengumuman
+  tanggal   DateTime @default(now())
+  urlFile   String?  @map("url_file") // Link PDF atau berkas lampiran
+  kategori  String?  // Pengumuman Umum, PPDB, Akademik, Libur, dsb.
+  penulis   String?  // Tambahan analisis: penerbit (misal: "Kepala Sekolah")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("pengumuman")
+}
+
+// -------------------------------------------------------------
+// 9. TABEL FASILITAS
+// -------------------------------------------------------------
+model Fasilitas {
+  id        Int      @id @default(autoincrement())
+  nama      String   // Misal: "Laboratorium Komputer", "Perpustakaan", "Ruang UKS"
+  deskripsi String?  @db.Text // Penjelasan fasilitas sekolah
+  kondisi   String?  // Misal: "Baik", "Sangat Baik"
+  linkFoto  String?  @map("link_foto")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("fasilitas")
+}
