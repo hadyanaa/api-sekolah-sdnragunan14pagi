@@ -1,0 +1,35 @@
+services:
+  # -------------------------------------------------------------
+  # 1. DATABASE POSTGRESQL (Container Khusus Database)
+  # -------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: api-sekolah-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password123}
+      POSTGRES_DB: ${POSTGRES_DB:-db_ragunan14}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  # -------------------------------------------------------------
+  # 2. BACKEND API EXPRESS.JS (Container Khusus Aplikasi)
+  # -------------------------------------------------------------
+  api:
+    build: .
+    container_name: api-sekolah-app
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      PORT: 5000
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password123}@db:5432/${POSTGRES_DB:-db_ragunan14}?schema=public"
+    ports:
+      - "5000:5000"
+
+volumes:
+  postgres_data:
+    name: api_sekolah_postgres_data

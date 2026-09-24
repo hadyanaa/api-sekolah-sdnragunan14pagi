@@ -9,11 +9,8 @@ jobs:
   deploy:
     runs-on: self-hosted
     steps:
-      - name: Pull Latest Code and Restart API
+      - name: Pull Latest Code and Rebuild Docker Container
         run: |
-          cd /var/www/api-sekolah
+          cd $HOME/apps/api-sekolah
           git pull origin main
-          npm install
-          npx prisma migrate deploy
-          npx prisma generate
-          pm2 restart api-sekolah
+          docker compose up -d --build
