@@ -7,8 +7,35 @@ const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 5000;
 
-app.use(cors());
+const allowedOrigins = [
+  'https://sdnragunan14pagi.sch.id',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5000'
+];
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin) || origin.endsWith('.sdnragunan14pagi.sch.id')) {
+      callback(null, true);
+    } else {
+      callback(null, true);
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
+
+// Routes Auth & Admin
+const authRouter = require('./routes/auth');
+const adminRouter = require('./routes/admin');
+const authMiddleware = require('./middleware/auth');
+
+app.use('/auth', authRouter);
+app.use('/admin', authMiddleware, adminRouter);
 
 // Helper function untuk parsing tanggal aman
 const parseDate = (val) => (val ? new Date(val) : null);
@@ -17,8 +44,32 @@ const parseDate = (val) => (val ? new Date(val) : null);
 app.get('/', (req, res) => {
   res.json({
     message: 'API SDN 14 Ragunan Pagi siap digunakan 🚀',
-    version: '1.0.0',
+    version: '1.1.0',
     endpoints: {
+      auth: [
+        'POST /auth/login'
+      ],
+      admin: [
+        'PUT /admin/visi-misi',
+        'POST /admin/sdm',
+        'PUT /admin/sdm/:id',
+        'DELETE /admin/sdm/:id',
+        'POST /admin/prestasi',
+        'PUT /admin/prestasi/:id',
+        'DELETE /admin/prestasi/:id',
+        'POST /admin/ekskul',
+        'PUT /admin/ekskul/:id',
+        'DELETE /admin/ekskul/:id',
+        'POST /admin/agenda',
+        'PUT /admin/agenda/:id',
+        'DELETE /admin/agenda/:id',
+        'POST /admin/pengumuman',
+        'PUT /admin/pengumuman/:id',
+        'DELETE /admin/pengumuman/:id',
+        'POST /admin/kalender-akademik',
+        'PUT /admin/kalender-akademik/:id',
+        'DELETE /admin/kalender-akademik/:id'
+      ],
       public: [
         '/public/siswa (atau /public/murid)',
         '/public/sdm (atau /public/pegawai)',

@@ -95,6 +95,7 @@ model Prestasi {
   id            Int       @id @default(autoincrement())
   nama          String    // Nama kejuaraan / lomba
   namaPeserta   String?   @map("nama_peserta") // Tambahan analisis: nama siswa atau regu pemenang
+  peraih        String?   // Alias peraih untuk admin & dashboard
   tanggal       DateTime?
   kategori      String?   // Akademik, Olahraga, Seni & Budaya, dll.
   deskripsi     String?   @db.Text
@@ -118,7 +119,10 @@ model Ekskul {
   nama      String   // Pramuka, Futsal, Tari, Dokter Kecil, dsb.
   pembina   String?  // Nama guru pembina / pelatih
   pj        String?  // Penanggung Jawab
+  hari      String?  // Hari pelaksanaan (misal: "Kamis")
+  jam       String?  // Jam pelaksanaan (misal: "14:00 - 16:00 WIB")
   waktu     String?  // Jadwal kegiatan (misal: "Jumat, 14.00 - 16.00 WIB")
+  deskripsi String?  @db.Text
   tujuan    String?  @db.Text
   materi    String?  @db.Text
   sifat     String?  // "Wajib" atau "Pilihan"
@@ -142,6 +146,7 @@ model Agenda {
   tanggal   DateTime
   waktu     String?  // Tambahan analisis: jam acara (misal: "08:00 - 12:00 WIB")
   tempat    String?  // Tambahan analisis: lokasi (misal: "Aula SDN 14 Ragunan")
+  lokasi    String?  // Alias lokasi untuk admin & dashboard
   linkFoto  String?  @map("link_foto")
 
   createdAt DateTime @default(now()) @map("created_at")
@@ -176,6 +181,7 @@ model Pengumuman {
   id        Int      @id @default(autoincrement())
   judul     String
   isi       String?  @db.Text // Teks detail isi pengumuman
+  deskripsi String?  @db.Text // Alias deskripsi untuk dashboard & admin
   tanggal   DateTime @default(now())
   urlFile   String?  @map("url_file") // Link PDF atau berkas lampiran
   kategori  String?  // Pengumuman Umum, PPDB, Akademik, Libur, dsb.
