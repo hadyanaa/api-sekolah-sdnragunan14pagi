@@ -30,9 +30,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       PORT: 5000
       DATABASE_URL: "postgresql://postgres:password123@db:5432/db_ragunan14?schema=public"
+      JWT_SECRET: ${JWT_SECRET:-sdn14ragunan_jwt_secret_key_super_secure_2026}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-$2b$10$8nSzjNUC6gPXXhh9Ojor9.NCjVXId1XimBGk4jMbZgc2qkQqktsg.}
     ports:
       - "5000:5000"
 
