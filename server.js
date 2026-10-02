@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { PrismaClient } = require('@prisma/client');
 require('dotenv').config();
 
@@ -37,6 +38,17 @@ const authMiddleware = require('./middleware/auth');
 app.use('/auth', authRouter);
 app.use('/admin', authMiddleware, adminRouter);
 
+// Static files untuk Audio Bel Sekolah
+app.use('/public/audio', express.static(path.join(__dirname, 'public/audio')));
+
+// Routes Bel Sekolah Otomatis (School Bell Automation)
+const schedulesRouter = require('./routes/schedules');
+const audioRouter = require('./routes/audio');
+const cronManager = require('./services/cronManager');
+
+app.use('/api/schedules', schedulesRouter);
+app.use('/api', audioRouter);
+
 // Helper function untuk parsing tanggal aman
 const parseDate = (val) => (val ? new Date(val) : null);
 
@@ -44,10 +56,19 @@ const parseDate = (val) => (val ? new Date(val) : null);
 app.get('/', (req, res) => {
   res.json({
     message: 'API SDN 14 Ragunan Pagi siap digunakan 🚀',
-    version: '1.1.0',
+    version: '1.2.0',
     endpoints: {
       auth: [
         'POST /auth/login'
+      ],
+      school_bell: [
+        'GET /api/schedules',
+        'POST /api/schedules',
+        'PUT /api/schedules/:id',
+        'DELETE /api/schedules/:id',
+        'POST /api/upload',
+        'GET /api/audio',
+        'POST /api/audio/play/:filename'
       ],
       admin: [
         'PUT /admin/visi-misi',
@@ -982,7 +1003,8 @@ app.delete('/api/fasilitas/:id', async (req, res) => {
   }
 });
 
-// Jalankan Server
-app.listen(PORT, () => {
+// Jalankan Server & Inisialisasi Bel Sekolah Otomatis
+app.listen(PORT, async () => {
   console.log(`Server API SDN Ragunan 14 Pagi berjalan di port ${PORT}`);
+  await cronManager.init();
 });

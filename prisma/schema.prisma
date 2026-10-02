@@ -208,3 +208,20 @@ model Fasilitas {
 
   @@map("fasilitas")
 }
+
+// -------------------------------------------------------------
+// 10. TABEL SCHEDULES (Bel Sekolah Otomatis)
+// -------------------------------------------------------------
+model Schedule {
+  id        Int      @id @default(autoincrement())
+  name      String   // Misal: "Bel Masuk Murid", "Bel Istirahat", "Bel Pulang"
+  days      String   // Contoh: "1,2,3,4,5" (1=Senin s.d. 5=Jumat)
+  time      String   // Format "HH:MM", misal "07:00"
+  audioFile String   @map("audio_file") // Nama file MP3 di folder /public/audio
+  isActive  Boolean  @default(true) @map("is_active")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("schedules")
+}

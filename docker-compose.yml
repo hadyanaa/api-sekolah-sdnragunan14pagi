@@ -40,7 +40,13 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-$2b$10$8nSzjNUC6gPXXhh9Ojor9.NCjVXId1XimBGk4jMbZgc2qkQqktsg.}
     ports:
       - "5000:5000"
+    devices:
+      - /dev/snd:/dev/snd
+    volumes:
+      - audio_data:/app/public/audio
 
 volumes:
   postgres_data:
     name: api_sekolah_postgres_data
+  audio_data:
+    name: api_sekolah_audio_data

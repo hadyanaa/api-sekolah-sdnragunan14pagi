@@ -1,7 +1,7 @@
 FROM node:20-slim
 
-# Install OpenSSL yang wajib digunakan oleh Prisma engine
-RUN apt-get update -y && apt-get install -y openssl ca-certificates
+# Install OpenSSL (Prisma engine) dan audio player mpg123 untuk bel sekolah
+RUN apt-get update -y && apt-get install -y openssl ca-certificates mpg123 alsa-utils
 
 # Set working directory
 WORKDIR /app
