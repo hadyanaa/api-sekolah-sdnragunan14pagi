@@ -224,4 +224,4 @@ model Schedule {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   @@map("schedules")
-}
+}
