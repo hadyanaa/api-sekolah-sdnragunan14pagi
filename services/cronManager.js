@@ -1,5 +1,5 @@
 const cron = require('node-cron');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const { PrismaClient } = require('@prisma/client');
@@ -96,7 +96,10 @@ class CronManager {
   }
 
   /**
-   * Menjalankan pemutar audio mpg123 melalui child_process.exec
+   * Menjalankan pemutar audio mpg123 melalui child_process.spawn
+   * Hanya satu audio yang boleh diputar sekaligus, karena device ALSA hw (plughw)
+   * bersifat eksklusif. Jika ada audio yang sedang berjalan, audio lama dihentikan
+   * dulu dan audio baru diputar setelah device dilepas.
    */
   playAudioFile(audioPath, scheduleName = 'Bel Sekolah') {
     if (!fs.existsSync(audioPath)) {
@@ -104,30 +107,38 @@ class CronManager {
       return;
     }
 
+    if (this.currentPlayer) {
+      console.log(`⏹️ [Player] Menghentikan audio sebelumnya agar device ALSA bebas...`);
+      const prev = this.currentPlayer;
+      prev.once('exit', () => this.playAudioFile(audioPath, scheduleName));
+      prev.kill('SIGTERM');
+      return;
+    }
+
     // Gunakan output ALSA (-o alsa) secara eksplisit agar mpg123 tidak crash mencari JACK server
     // Device default adalah plughw:1,0 (Card 1 pada server sekolah) dengan software resampling
     const audioDevice = process.env.AUDIO_DEVICE || 'plughw:1,0';
-    const command = `mpg123 -o alsa -a ${audioDevice} "${audioPath}"`;
-    console.log(`🔊 [Eksekusi Player] ${command}`);
+    const args = ['-q', '-o', 'alsa', '-a', audioDevice, audioPath];
+    console.log(`🔊 [Eksekusi Player] mpg123 ${args.join(' ')}`);
 
-    exec(command, (error, stdout, stderr) => {
-      if (error) {
-        console.warn(`⚠️ [Player Output] mpg123 error: ${error.message}`);
-        // Fallback: Jika device plughw:1,0 bermasalah, coba panggil default ALSA tanpa device spesifik
-        if (audioDevice !== 'default') {
-          const fallbackCmd = `mpg123 -o alsa "${audioPath}"`;
-          console.log(`🔄 [Player Fallback] Mencoba fallback ke ALSA default: ${fallbackCmd}`);
-          exec(fallbackCmd, (fallbackErr) => {
-            if (fallbackErr) {
-              console.error(`❌ [Player Fallback Error]: ${fallbackErr.message}`);
-            } else {
-              console.log(`🔔 [Selesai] Bel "${scheduleName}" selesai berbunyi (via fallback).`);
-            }
-          });
-        }
-        return;
+    const player = spawn('mpg123', args);
+    this.currentPlayer = player;
+    let stderr = '';
+    player.stderr.on('data', (d) => { stderr += d.toString(); });
+
+    player.on('error', (err) => {
+      console.error(`❌ [Player Error] Gagal menjalankan mpg123: ${err.message}`);
+    });
+
+    player.on('exit', (code, signal) => {
+      if (this.currentPlayer === player) this.currentPlayer = null;
+      if (signal) {
+        console.log(`⏹️ [Player] "${scheduleName}" dihentikan (${signal}).`);
+      } else if (code === 0) {
+        console.log(`🔔 [Selesai] Bel "${scheduleName}" selesai berbunyi.`);
+      } else {
+        console.warn(`⚠️ [Player Output] mpg123 gagal (exit ${code}) pada device ${audioDevice}:\n${stderr}`);
       }
-      console.log(`🔔 [Selesai] Bel "${scheduleName}" selesai berbunyi.`);
     });
   }
 
