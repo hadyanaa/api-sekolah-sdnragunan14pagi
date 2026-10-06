@@ -104,13 +104,27 @@ class CronManager {
       return;
     }
 
-    const command = `mpg123 "${audioPath}"`;
+    // Gunakan output ALSA (-o alsa) secara eksplisit agar mpg123 tidak crash mencari JACK server
+    // Device default adalah plughw:1,0 (Card 1 pada server sekolah) dengan software resampling
+    const audioDevice = process.env.AUDIO_DEVICE || 'plughw:1,0';
+    const command = `mpg123 -o alsa -a ${audioDevice} "${audioPath}"`;
     console.log(`🔊 [Eksekusi Player] ${command}`);
 
     exec(command, (error, stdout, stderr) => {
       if (error) {
-        // Jika mpg123 belum terpasang (misal di lokal Windows tanpa mpg123)
-        console.warn(`⚠️ [Player Output] mpg123 message: ${error.message}`);
+        console.warn(`⚠️ [Player Output] mpg123 error: ${error.message}`);
+        // Fallback: Jika device plughw:1,0 bermasalah, coba panggil default ALSA tanpa device spesifik
+        if (audioDevice !== 'default') {
+          const fallbackCmd = `mpg123 -o alsa "${audioPath}"`;
+          console.log(`🔄 [Player Fallback] Mencoba fallback ke ALSA default: ${fallbackCmd}`);
+          exec(fallbackCmd, (fallbackErr) => {
+            if (fallbackErr) {
+              console.error(`❌ [Player Fallback Error]: ${fallbackErr.message}`);
+            } else {
+              console.log(`🔔 [Selesai] Bel "${scheduleName}" selesai berbunyi (via fallback).`);
+            }
+          });
+        }
         return;
       }
       console.log(`🔔 [Selesai] Bel "${scheduleName}" selesai berbunyi.`);

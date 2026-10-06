@@ -4,6 +4,9 @@ FROM node:20-slim
 RUN apt-get update -y && apt-get install -y openssl ca-certificates mpg123 alsa-utils tzdata
 ENV TZ="Asia/Jakarta"
 
+# Set default ALSA device ke Card 1 (Intel PCH pada server)
+RUN printf "defaults.pcm.card 1\ndefaults.ctl.card 1\n" > /etc/asound.conf
+
 # Set working directory
 WORKDIR /app
 

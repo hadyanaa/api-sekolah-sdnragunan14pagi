@@ -35,6 +35,7 @@ services:
     environment:
       PORT: 5000
       TZ: "Asia/Jakarta"
+      AUDIO_DEVICE: ${AUDIO_DEVICE:-plughw:1,0}
       DATABASE_URL: "postgresql://postgres:password123@db:5432/db_ragunan14?schema=public"
       JWT_SECRET: ${JWT_SECRET:-sdn14ragunan_jwt_secret_key_super_secure_2026}
       ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
