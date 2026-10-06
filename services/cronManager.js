@@ -15,7 +15,8 @@ class CronManager {
    * Inisialisasi awal saat server Express menyala
    */
   async init() {
-    console.log('🔔 [CronManager] Menginisialisasi sistem Bel Sekolah Otomatis...');
+    const wibTime = new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jakarta' });
+    console.log(`🔔 [CronManager] Menginisialisasi sistem Bel Sekolah Otomatis... (Waktu server: ${wibTime} WIB)`);
     await this.syncSchedules();
   }
 
@@ -78,14 +79,17 @@ class CronManager {
 
       const audioPath = path.resolve(__dirname, '../public/audio', audioFile);
 
-      // Buat task cron
+      // Buat task cron dengan zona waktu Asia/Jakarta (WIB)
       const task = cron.schedule(cronExpression, () => {
-        console.log(`⏰ [BEL BERBUNYI] "${name}" (${time}) -> Memutar ${audioFile}`);
+        console.log(`⏰ [BEL BERBUNYI] "${name}" (${time} WIB) -> Memutar ${audioFile}`);
         this.playAudioFile(audioPath, name);
+      }, {
+        scheduled: true,
+        timezone: 'Asia/Jakarta'
       });
 
       this.jobs.set(id, task);
-      console.log(`   ✅ [Terdaftar #${id}] "${name}" [${cronExpression}] -> ${audioFile}`);
+      console.log(`   ✅ [Terdaftar #${id}] "${name}" [${cronExpression} WIB] -> ${audioFile}`);
     } catch (err) {
       console.error(`❌ [CronManager] Gagal mendaftarkan jadwal #${schedule.id}:`, err.message);
     }

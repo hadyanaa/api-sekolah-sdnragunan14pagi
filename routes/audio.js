@@ -40,7 +40,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 25 * 1024 * 1024 } // Maksimal 25MB
+  limits: { fileSize: 100 * 1024 * 1024 } // Maksimal 100MB
 });
 
 // ==========================================
@@ -49,6 +49,12 @@ const upload = multer({
 router.post('/upload', (req, res) => {
   upload.single('audio')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({
+          success: false,
+          message: 'Ukuran file audio terlalu besar! Maksimal ukuran file adalah 100MB.'
+        });
+      }
       return res.status(400).json({ success: false, message: `Upload error: ${err.message}` });
     } else if (err) {
       return res.status(400).json({ success: false, message: err.message });

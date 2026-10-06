@@ -1,7 +1,8 @@
 FROM node:20-slim
 
-# Install OpenSSL (Prisma engine) dan audio player mpg123 untuk bel sekolah
-RUN apt-get update -y && apt-get install -y openssl ca-certificates mpg123 alsa-utils
+# Install OpenSSL (Prisma engine), audio player mpg123, dan tzdata (zona waktu WIB)
+RUN apt-get update -y && apt-get install -y openssl ca-certificates mpg123 alsa-utils tzdata
+ENV TZ="Asia/Jakarta"
 
 # Set working directory
 WORKDIR /app
