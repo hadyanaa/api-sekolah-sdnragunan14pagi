@@ -52,10 +52,18 @@ const cronManager = require('./services/cronManager');
 const authGuruRouter = require('./routes/authGuru');
 const absensiRouter = require('./routes/absensi');
 
+// Routes Master Data Absensi (Kelas, Guru, Murid)
+const kelasRouter = require('./routes/kelas');
+const guruRouter = require('./routes/guru');
+const muridRouter = require('./routes/murid');
+
 app.use('/api/schedules', schedulesRouter);
 app.use('/api', audioRouter);
 app.use('/api/auth', authGuruRouter);
 app.use('/api/absensi', absensiRouter);
+app.use('/api/kelas', kelasRouter);
+app.use('/api/guru', guruRouter);
+app.use('/api/murid', muridRouter);
 
 // Helper function untuk parsing tanggal aman
 const parseDate = (val) => (val ? new Date(val) : null);
@@ -64,12 +72,17 @@ const parseDate = (val) => (val ? new Date(val) : null);
 app.get('/', (req, res) => {
   res.json({
     message: 'API SDN 14 Ragunan Pagi siap digunakan 🚀',
-    version: '1.3.0',
+    version: '1.4.0',
     endpoints: {
       auth: [
-        'POST /auth/login (Admin)',
+        'POST /auth/login (Admin & Guru)',
         'POST /api/auth/login (Guru)',
         'GET /api/auth/me (Profil Guru)'
+      ],
+      master_absensi: [
+        'GET|POST /api/kelas, PUT|DELETE /api/kelas/:id',
+        'GET|POST /api/guru, PUT|DELETE /api/guru/:id',
+        'GET|POST /api/murid, POST /api/murid/bulk, PUT|DELETE /api/murid/:id'
       ],
       absensi_siswa: [
         'GET /api/absensi?bulan=10&tahun=2026 (&kelas_id=1)',
