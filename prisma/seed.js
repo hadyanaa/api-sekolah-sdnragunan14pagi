@@ -148,6 +148,68 @@ async function main() {
     });
   }
 
+  // 10. Seed Absensi (Kelas 1A-6B, Guru, Murid)
+  console.log('📌 Seeding Absensi (Kelas, Guru, Murid)...');
+  const bcrypt = require('bcryptjs');
+  const kelasList = ['1A', '1B', '2A', '2B', '3A', '3B', '4A', '4B', '5A', '5B', '6A', '6B'];
+  const kelasRecords = {};
+  for (const namaKelas of kelasList) {
+    kelasRecords[namaKelas] = await prisma.kelas.upsert({
+      where: { namaKelas },
+      update: {},
+      create: { namaKelas }
+    });
+  }
+
+  const defaultPassword = await bcrypt.hash('guru123', 10);
+  await prisma.guru.upsert({
+    where: { nip: '198501012010011001' },
+    update: { password: defaultPassword, role: 'WALI_KELAS', kelasId: kelasRecords['1A'].id },
+    create: {
+      nip: '198501012010011001',
+      namaGuru: 'Siti Aminah, S.Pd',
+      password: defaultPassword,
+      role: 'WALI_KELAS',
+      kelasId: kelasRecords['1A'].id
+    }
+  });
+
+  await prisma.guru.upsert({
+    where: { nip: '199002022015022002' },
+    update: { password: defaultPassword, role: 'GURU_MAPEL', kelasId: null },
+    create: {
+      nip: '199002022015022002',
+      namaGuru: 'Bambang Irawan, S.Pd',
+      password: defaultPassword,
+      role: 'GURU_MAPEL',
+      kelasId: null
+    }
+  });
+
+  const sampelMurid1A = [
+    { noUrut: 1, namaMurid: 'Aditya Pratama' },
+    { noUrut: 2, namaMurid: 'Aisyah Putri' },
+    { noUrut: 3, namaMurid: 'Bagas Firmansyah' },
+    { noUrut: 4, namaMurid: 'Citra Kirana' },
+    { noUrut: 5, namaMurid: 'Dimas Anggara' },
+    { noUrut: 6, namaMurid: 'Eka Lestari' },
+    { noUrut: 7, namaMurid: 'Fajar Nugraha' },
+    { noUrut: 8, namaMurid: 'Gita Gutawa' },
+    { noUrut: 9, namaMurid: 'Hafiz Al-Fath' },
+    { noUrut: 10, namaMurid: 'Indah Permatasari' }
+  ];
+
+  for (const m of sampelMurid1A) {
+    const exist = await prisma.murid.findFirst({
+      where: { kelasId: kelasRecords['1A'].id, noUrut: m.noUrut }
+    });
+    if (!exist) {
+      await prisma.murid.create({
+        data: { namaMurid: m.namaMurid, noUrut: m.noUrut, kelasId: kelasRecords['1A'].id }
+      });
+    }
+  }
+
   console.log('✅ SEEDING SELESAI!');
   console.log(`- Visi Misi: 1 data`);
   console.log(`- SDM: ${data.sdm.length} data`);
@@ -157,6 +219,9 @@ async function main() {
   console.log(`- Kalender Akademik: ${data.kalenderAkademik.length} data`);
   console.log(`- Pengumuman: ${data.pengumuman.length} data`);
   console.log(`- Fasilitas: ${data.fasilitas.length} data`);
+  console.log(`- Kelas: 12 data`);
+  console.log(`- Guru: 2 akun uji (NIP 198501012010011001 & 199002022015022002)`);
+  console.log(`- Murid: 10 data (Kelas 1A)`);
 }
 
 main()
