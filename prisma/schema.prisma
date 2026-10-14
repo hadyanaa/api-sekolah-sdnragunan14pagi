@@ -225,3 +225,83 @@ model Schedule {
 
   @@map("schedules")
 }
+
+// -------------------------------------------------------------
+// 11. SISTEM ABSENSI SISWA SEKOLAH
+// -------------------------------------------------------------
+
+enum RoleGuru {
+  WALI_KELAS
+  GURU_MAPEL
+}
+
+enum StatusAbsensi {
+  H // Hadir
+  S // Sakit
+  I // Izin
+  A // Alpa
+  L // Libur
+}
+
+// Tabel 1: Kelas (1A sampai 6B)
+model Kelas {
+  id        Int      @id @default(autoincrement())
+  namaKelas String   @unique @map("nama_kelas")
+
+  guru      Guru[]
+  murid     Murid[]
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("kelas")
+}
+
+// Tabel 2: Guru
+model Guru {
+  id        Int      @id @default(autoincrement())
+  nip       String   @unique
+  namaGuru  String   @map("nama_guru")
+  password  String
+  role      RoleGuru @default(WALI_KELAS)
+  kelasId   Int?     @map("kelas_id")
+  kelas     Kelas?   @relation(fields: [kelasId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("guru")
+}
+
+// Tabel 3: Murid
+model Murid {
+  id        Int       @id @default(autoincrement())
+  namaMurid String    @map("nama_murid")
+  noUrut    Int       @map("no_urut")
+  kelasId   Int       @map("kelas_id")
+  kelas     Kelas     @relation(fields: [kelasId], references: [id], onDelete: Cascade)
+
+  absensi   Absensi[]
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+
+  @@map("murid")
+}
+
+// Tabel 4: Absensi (Upsert harian)
+model Absensi {
+  id        Int           @id @default(autoincrement())
+  muridId   Int           @map("murid_id")
+  murid     Murid         @relation(fields: [muridId], references: [id], onDelete: Cascade)
+  tanggal   DateTime      @db.Date
+  status    StatusAbsensi
+
+  createdAt DateTime      @default(now()) @map("created_at")
+  updatedAt DateTime      @updatedAt @map("updated_at")
+
+  @@unique([muridId, tanggal])
+  @@index([tanggal])
+  @@map("absensi")
+}
+

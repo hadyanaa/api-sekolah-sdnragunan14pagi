@@ -10,6 +10,7 @@ const PORT = process.env.PORT || 5000;
 
 const allowedOrigins = [
   'https://sdnragunan14pagi.sch.id',
+  'https://absensi.sdnragunan14pagi.sch.id',
   'http://localhost:5173',
   'http://localhost:3000',
   'http://localhost:5000'
@@ -47,8 +48,14 @@ const schedulesRouter = require('./routes/schedules');
 const audioRouter = require('./routes/audio');
 const cronManager = require('./services/cronManager');
 
+// Routes Absensi Siswa & Auth Guru
+const authGuruRouter = require('./routes/authGuru');
+const absensiRouter = require('./routes/absensi');
+
 app.use('/api/schedules', schedulesRouter);
 app.use('/api', audioRouter);
+app.use('/api/auth', authGuruRouter);
+app.use('/api/absensi', absensiRouter);
 
 // Helper function untuk parsing tanggal aman
 const parseDate = (val) => (val ? new Date(val) : null);
@@ -57,10 +64,17 @@ const parseDate = (val) => (val ? new Date(val) : null);
 app.get('/', (req, res) => {
   res.json({
     message: 'API SDN 14 Ragunan Pagi siap digunakan 🚀',
-    version: '1.2.0',
+    version: '1.3.0',
     endpoints: {
       auth: [
-        'POST /auth/login'
+        'POST /auth/login (Admin)',
+        'POST /api/auth/login (Guru)',
+        'GET /api/auth/me (Profil Guru)'
+      ],
+      absensi_siswa: [
+        'GET /api/absensi?bulan=10&tahun=2026 (&kelas_id=1)',
+        'POST /api/absensi (Batch Upsert { murid_id, tanggal, status }[])',
+        'GET /api/absensi/daftar-kelas'
       ],
       school_bell: [
         'GET /api/schedules',
