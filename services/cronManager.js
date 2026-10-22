@@ -116,8 +116,8 @@ class CronManager {
     }
 
     // Gunakan output ALSA (-o alsa) secara eksplisit agar mpg123 tidak crash mencari JACK server
-    // Device default adalah plughw:1,0 (Card 1 pada server sekolah) dengan software resampling
-    const audioDevice = process.env.AUDIO_DEVICE || 'plughw:1,0';
+    // Device default adalah plughw:0,0 (Card 0 pada server sekolah) dengan software resampling
+    const audioDevice = process.env.AUDIO_DEVICE || 'plughw:0,0';
     const args = ['-q', '-o', 'alsa', '-a', audioDevice, audioPath];
     console.log(`🔊 [Eksekusi Player] mpg123 ${args.join(' ')}`);
 
