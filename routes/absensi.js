@@ -1,6 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
-const authGuruMiddleware = require('../middleware/authGuru');
+const authFlexible = require('../middleware/authFlexible');
 
 const router = express.Router();
 const prisma = new PrismaClient();
@@ -25,12 +25,12 @@ const parseDateOnlyUTC = (str) => {
 // Parameter: ?bulan=10&tahun=2026 (&kelas_id=1 opsional untuk Guru Mapel)
 // Format response: Grid (baris = murid, kolom = tanggal 1-31).
 // ==========================================
-router.get('/', authGuruMiddleware, async (req, res) => {
+router.get('/', authFlexible, async (req, res) => {
   try {
     const guru = req.guru;
     let targetKelasId = null;
 
-    if (guru.role === 'WALI_KELAS') {
+    if (req.isGuru && guru && guru.role === 'WALI_KELAS') {
       targetKelasId = guru.kelas_id;
       if (!targetKelasId) {
         return res.status(400).json({
@@ -39,10 +39,10 @@ router.get('/', authGuruMiddleware, async (req, res) => {
         });
       }
     } else {
-      // Guru Mapel bisa mengirim kelas_id lewat query
+      // Admin atau Guru Mapel bisa mengirim kelas_id lewat query
       if (req.query.kelas_id) {
         targetKelasId = parseInt(req.query.kelas_id, 10);
-      } else if (guru.kelas_id) {
+      } else if (guru && guru.kelas_id) {
         targetKelasId = guru.kelas_id;
       } else {
         // Jika tidak kirim kelas_id, ambil kelas pertama yang ada
@@ -173,7 +173,7 @@ router.get('/', authGuruMiddleware, async (req, res) => {
 // Menerima array object { murid_id, tanggal, status }
 // atau { data: [ ... ] }
 // ==========================================
-router.post('/', authGuruMiddleware, async (req, res) => {
+router.post('/', authFlexible, async (req, res) => {
   try {
     const rawItems = Array.isArray(req.body) ? req.body : (req.body.data || [req.body]);
 
@@ -222,7 +222,7 @@ router.post('/', authGuruMiddleware, async (req, res) => {
     }
 
     // Keamanan: Jika Wali Kelas, pastikan semua murid_id yang diinput adalah murid di kelasnya
-    if (req.guru.role === 'WALI_KELAS') {
+    if (req.isGuru && req.guru && req.guru.role === 'WALI_KELAS') {
       const muridIds = [...new Set(validItems.map((v) => v.muridId))];
       const muridLain = await prisma.murid.findFirst({
         where: {
@@ -277,7 +277,7 @@ router.post('/', authGuruMiddleware, async (req, res) => {
 // ==========================================
 // 3. GET /api/absensi/daftar-kelas (Helper untuk dropdown)
 // ==========================================
-router.get('/daftar-kelas', authGuruMiddleware, async (req, res) => {
+router.get('/daftar-kelas', authFlexible, async (req, res) => {
   try {
     const listKelas = await prisma.kelas.findMany({
       include: {

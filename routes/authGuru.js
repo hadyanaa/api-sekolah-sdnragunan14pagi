@@ -2,13 +2,13 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
-const authGuruMiddleware = require('../middleware/authGuru');
+const authFlexible = require('../middleware/authFlexible');
 
 const router = express.Router();
 const prisma = new PrismaClient();
 
 // POST /api/auth/login
-// Menerima NIP dan password. Kembalikan JWT token beserta data guru dan nama_kelas miliknya.
+// Menerima NIP/Username dan password. Mendukung login Admin maupun Guru.
 router.post('/login', async (req, res) => {
   try {
     const { nip, username, password } = req.body;
@@ -21,7 +21,42 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    // Cari guru berdasarkan NIP
+    const secret = process.env.JWT_SECRET || 'sdn14ragunan_jwt_secret_key_super_secure_2026';
+
+    // 1. Cek apakah login sebagai Admin
+    const expectedUsername = process.env.ADMIN_USERNAME || 'admin';
+    const expectedPassword = process.env.ADMIN_PASSWORD || '$2b$10$8nSzjNUC6gPXXhh9Ojor9.NCjVXId1XimBGk4jMbZgc2qkQqktsg.';
+
+    if (nipTarget === expectedUsername) {
+      const isAdminMatch = expectedPassword.startsWith('$2')
+        ? bcrypt.compareSync(password, expectedPassword)
+        : password === expectedPassword;
+
+      if (isAdminMatch) {
+        const adminProfile = {
+          id: 0,
+          nip: expectedUsername,
+          nama_guru: 'Administrator Sekolah',
+          role: 'ADMIN',
+          kelas_id: null,
+          nama_kelas: null
+        };
+        const token = jwt.sign(
+          { username: expectedUsername, ...adminProfile },
+          secret,
+          { expiresIn: '24h' }
+        );
+        return res.status(200).json({
+          success: true,
+          message: 'Login Admin berhasil',
+          token,
+          role: 'ADMIN',
+          guru: adminProfile
+        });
+      }
+    }
+
+    // 2. Cari guru berdasarkan NIP
     const guru = await prisma.guru.findUnique({
       where: { nip: nipTarget },
       include: {
@@ -45,7 +80,6 @@ router.post('/login', async (req, res) => {
       });
     }
 
-    const secret = process.env.JWT_SECRET || 'sdn14ragunan_jwt_secret_key_super_secure_2026';
     const payload = {
       id: guru.id,
       nip: guru.nip,
@@ -61,14 +95,7 @@ router.post('/login', async (req, res) => {
       success: true,
       message: 'Login berhasil',
       token,
-      guru: {
-        id: guru.id,
-        nip: guru.nip,
-        nama_guru: guru.namaGuru,
-        role: guru.role,
-        kelas_id: guru.kelasId,
-        nama_kelas: guru.kelas ? guru.kelas.namaKelas : null
-      }
+      guru: payload
     });
   } catch (error) {
     return res.status(500).json({
@@ -78,9 +105,23 @@ router.post('/login', async (req, res) => {
   }
 });
 
-// GET /api/auth/me (Cek sesi profil guru saat ini)
-router.get('/me', authGuruMiddleware, async (req, res) => {
+// GET /api/auth/me (Cek sesi profil guru/admin saat ini)
+router.get('/me', authFlexible, async (req, res) => {
   try {
+    if (req.isAdmin) {
+      return res.status(200).json({
+        success: true,
+        guru: {
+          id: 0,
+          nip: req.user.username || req.user.nip || 'admin',
+          nama_guru: 'Administrator Sekolah',
+          role: 'ADMIN',
+          kelas_id: null,
+          nama_kelas: null
+        }
+      });
+    }
+
     const guru = await prisma.guru.findUnique({
       where: { id: req.guru.id },
       include: { kelas: true }

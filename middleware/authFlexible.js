@@ -32,7 +32,7 @@ const authFlexible = (req, res, next) => {
     }
 
     req.user = decoded;
-    if (decoded.role === 'admin') {
+    if (decoded.role && decoded.role.toLowerCase() === 'admin') {
       req.isAdmin = true;
       req.isGuru = false;
     } else {
