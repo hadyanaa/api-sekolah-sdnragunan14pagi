@@ -236,6 +236,12 @@ enum RoleGuru {
   PIKET
 }
 
+enum StatusGuru {
+  AKTIF         // Masih aktif bertugas di sekolah
+  MUTASI_KELUAR // Pindah tugas ke sekolah / instansi lain
+  PENSIUN       // Purna tugas / pensiun
+}
+
 enum StatusAbsensi {
   H // Hadir
   S // Sakit
@@ -268,19 +274,35 @@ model Kelas {
 
 // Tabel 2: Guru
 model Guru {
-  id         Int         @id @default(autoincrement())
-  username   String      @unique
-  nipNikki   String?     @map("nip_nikki")
-  namaGuru   String      @map("nama_guru")
-  password   String
-  role       RoleGuru    @default(WALI_KELAS)
-  kelasId    Int?        @map("kelas_id")
-  kelas      Kelas?      @relation("WaliKelas", fields: [kelasId], references: [id], onDelete: SetNull)
-  kelasMapel GuruKelas[]
+  id                Int                   @id @default(autoincrement())
+  username          String                @unique
+  nipNikki          String?               @map("nip_nikki")
+  nuptk             String?
+  nrg               String?
+  golonganRuang     String?               @map("golongan_ruang")
+  jabatan           String?               // Mapel / bidang tugas (misal: Guru Kelas, Guru PJOK, PAI)
+  tmtKerja          DateTime?             @map("tmt_kerja") @db.Date
+  tmtSekolah        DateTime?             @map("tmt_sekolah") @db.Date
+  tingkatPendidikan String?               @map("tingkat_pendidikan")
+  jurusan           String?
+  jenisKelamin      String?               @map("jenis_kelamin")
+  tempatLahir       String?               @map("tempat_lahir")
+  tanggalLahir      DateTime?             @map("tanggal_lahir") @db.Date
+  alamat            String?               @db.Text
+  status            StatusGuru            @default(AKTIF)
+  tahunKeluar       String?               @map("tahun_keluar")
+  namaGuru          String                @map("nama_guru")
+  password          String
+  role              RoleGuru              @default(WALI_KELAS)
+  kelasId           Int?                  @map("kelas_id")
+  kelas             Kelas?                @relation("WaliKelas", fields: [kelasId], references: [id], onDelete: SetNull)
+  kelasMapel        GuruKelas[]
+  riwayatMengajar   RiwayatMengajarGuru[]
 
-  createdAt  DateTime    @default(now()) @map("created_at")
-  updatedAt  DateTime    @updatedAt @map("updated_at")
+  createdAt         DateTime              @default(now()) @map("created_at")
+  updatedAt         DateTime              @updatedAt @map("updated_at")
 
+  @@index([status])
   @@map("guru")
 }
 
@@ -294,6 +316,24 @@ model GuruKelas {
 
   @@id([guruId, kelasId])
   @@map("guru_kelas")
+}
+
+// Tabel 2B: Riwayat Mengajar Guru per Tahun Ajaran
+model RiwayatMengajarGuru {
+  id              Int      @id @default(autoincrement())
+  guruId          Int      @map("guru_id")
+  guru            Guru     @relation(fields: [guruId], references: [id], onDelete: Cascade)
+  tahunAjaran     String   @map("tahun_ajaran")
+  role            RoleGuru
+  jabatan         String?
+  keteranganKelas String   @map("keterangan_kelas")
+
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@unique([guruId, tahunAjaran])
+  @@index([tahunAjaran])
+  @@map("riwayat_mengajar_guru")
 }
 
 // Tabel 3: Murid

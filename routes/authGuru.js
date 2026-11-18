@@ -111,6 +111,14 @@ router.post('/login', async (req, res) => {
       });
     }
 
+    // Tolak login bila akun guru berstatus non-aktif (Mutasi Keluar / Pensiun)
+    if (guru.status && guru.status !== 'AKTIF') {
+      return res.status(403).json({
+        success: false,
+        message: `Akun Anda berstatus ${guru.status === 'PENSIUN' ? 'Pensiun' : 'Mutasi Keluar'} dan sudah tidak dapat digunakan untuk login`
+      });
+    }
+
     const payload = formatGuruAuthProfile(guru);
     const token = jwt.sign(payload, secret, { expiresIn: '7d' });
 
@@ -165,6 +173,13 @@ router.get('/me', authFlexible, async (req, res) => {
       return res.status(404).json({
         success: false,
         message: 'Data guru tidak ditemukan'
+      });
+    }
+
+    if (guru.status && guru.status !== 'AKTIF') {
+      return res.status(403).json({
+        success: false,
+        message: `Akun Anda berstatus ${guru.status === 'PENSIUN' ? 'Pensiun' : 'Mutasi Keluar'}`
       });
     }
 

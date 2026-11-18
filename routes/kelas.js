@@ -19,6 +19,7 @@ router.get('/', async (req, res) => {
     const listKelas = await prisma.kelas.findMany({
       include: {
         guru: {
+          where: { status: 'AKTIF' },
           select: {
             id: true,
             namaGuru: true,
@@ -28,6 +29,7 @@ router.get('/', async (req, res) => {
           }
         },
         guruMapel: {
+          where: { guru: { status: 'AKTIF' } },
           include: {
             guru: {
               select: {

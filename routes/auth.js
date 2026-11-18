@@ -57,6 +57,13 @@ router.post('/login', async (req, res) => {
     });
 
     if (guru && bcrypt.compareSync(password, guru.password)) {
+      if (guru.status && guru.status !== 'AKTIF') {
+        return res.status(403).json({
+          success: false,
+          message: `Akun Anda berstatus ${guru.status === 'PENSIUN' ? 'Pensiun' : 'Mutasi Keluar'} dan sudah tidak aktif`
+        });
+      }
+
       const kelasMapel = (guru.kelasMapel || []).map((km) => ({
         id: km.kelas.id,
         nama_kelas: km.kelas.namaKelas
