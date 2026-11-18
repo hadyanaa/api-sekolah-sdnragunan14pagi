@@ -27,7 +27,9 @@ router.get('/', async (req, res) => {
           }
         },
         _count: {
-          select: { murid: true }
+          select: {
+            murid: { where: { status: 'AKTIF' } }
+          }
         }
       },
       orderBy: { namaKelas: 'asc' }

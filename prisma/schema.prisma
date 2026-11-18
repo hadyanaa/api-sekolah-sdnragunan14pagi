@@ -243,6 +243,12 @@ enum StatusAbsensi {
   L // Libur
 }
 
+enum StatusMurid {
+  AKTIF         // Masih aktif belajar di sekolah
+  LULUS         // Sudah lulus / alumni
+  MUTASI_KELUAR // Pindah / mutasi keluar sekolah
+}
+
 // Tabel 1: Kelas (1A sampai 6B)
 model Kelas {
   id        Int      @id @default(autoincrement())
@@ -275,17 +281,20 @@ model Guru {
 
 // Tabel 3: Murid
 model Murid {
-  id        Int       @id @default(autoincrement())
-  namaMurid String    @map("nama_murid")
-  noUrut    Int       @map("no_urut")
-  kelasId   Int       @map("kelas_id")
-  kelas     Kelas     @relation(fields: [kelasId], references: [id], onDelete: Cascade)
+  id          Int         @id @default(autoincrement())
+  namaMurid   String      @map("nama_murid")
+  noUrut      Int         @map("no_urut")
+  status      StatusMurid @default(AKTIF)
+  tahunKeluar String?     @map("tahun_keluar") // Opsional: tahun lulus atau tahun mutasi
+  kelasId     Int         @map("kelas_id")
+  kelas       Kelas       @relation(fields: [kelasId], references: [id], onDelete: Cascade)
 
-  absensi   Absensi[]
+  absensi     Absensi[]
 
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
 
+  @@index([status])
   @@map("murid")
 }
 

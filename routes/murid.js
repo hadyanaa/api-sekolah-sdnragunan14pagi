@@ -12,9 +12,11 @@ const parseId = (val) => {
 
 // ==========================================
 // 1. GET /api/murid (Daftar Murid)
-// Support query: ?kelas_id=1 & ?q=budi
+// Support query: ?kelas_id=1 & ?q=budi & ?status=AKTIF|LULUS|MUTASI_KELUAR|NONAKTIF|SEMUA
 // Jika Wali Kelas tanpa query: otomatis filter kelasnya
 // ==========================================
+const VALID_STATUS_MURID = ['AKTIF', 'LULUS', 'MUTASI_KELUAR'];
+
 router.get('/', authFlexible, async (req, res) => {
   try {
     const where = {};
@@ -23,6 +25,15 @@ router.get('/', authFlexible, async (req, res) => {
       where.kelasId = parseId(req.query.kelas_id);
     } else if (req.isGuru && req.guru.role === 'WALI_KELAS') {
       where.kelasId = req.guru.kelas_id;
+    }
+
+    const statusParam = String(req.query.status || 'AKTIF').trim().toUpperCase();
+    if (statusParam === 'NONAKTIF') {
+      where.status = { in: ['LULUS', 'MUTASI_KELUAR'] };
+    } else if (VALID_STATUS_MURID.includes(statusParam)) {
+      where.status = statusParam;
+    } else if (statusParam !== 'SEMUA') {
+      where.status = 'AKTIF';
     }
 
     if (req.query.q) {
@@ -52,6 +63,8 @@ router.get('/', authFlexible, async (req, res) => {
       id: m.id,
       no_urut: m.noUrut,
       nama_murid: m.namaMurid,
+      status: m.status,
+      tahun_keluar: m.tahunKeluar,
       kelas_id: m.kelasId,
       nama_kelas: m.kelas ? m.kelas.namaKelas : null,
       created_at: m.createdAt
@@ -96,6 +109,8 @@ router.get('/:id', authFlexible, async (req, res) => {
         id: murid.id,
         no_urut: murid.noUrut,
         nama_murid: murid.namaMurid,
+        status: murid.status,
+        tahun_keluar: murid.tahunKeluar,
         kelas_id: murid.kelasId,
         nama_kelas: murid.kelas ? murid.kelas.namaKelas : null,
         total_rekaman_absensi: murid._count.absensi,
@@ -104,6 +119,220 @@ router.get('/:id', authFlexible, async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// 2B. GET /api/murid/:id/history (Riwayat Kehadiran Per Tahun Ajaran)
+// Query opsional: ?tahun_ajaran=2026/2027
+// ==========================================
+const NAMA_BULAN_LIST = [
+  'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+  'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+];
+
+const getAcademicStartYear = (year, month1Based) =>
+  month1Based >= 7 ? year : year - 1;
+
+const buildSemesterData = ({ label, periode, monthsSpec, byMonthMap }) => {
+  const rekap = { H: 0, S: 0, I: 0, A: 0, L: 0 };
+  const bulanan = monthsSpec.map(({ bulan, tahun }) => {
+    const key = `${tahun}-${bulan}`;
+    const entry = byMonthMap[key] || {
+      rekap: { H: 0, S: 0, I: 0, A: 0, L: 0 },
+      detail_ketidakhadiran: []
+    };
+
+    rekap.H += entry.rekap.H;
+    rekap.S += entry.rekap.S;
+    rekap.I += entry.rekap.I;
+    rekap.A += entry.rekap.A;
+    rekap.L += entry.rekap.L;
+
+    const totalAktifBulan = entry.rekap.H + entry.rekap.S + entry.rekap.I + entry.rekap.A;
+    return {
+      bulan,
+      tahun,
+      nama_bulan: NAMA_BULAN_LIST[bulan - 1],
+      rekap: entry.rekap,
+      total_aktif: totalAktifBulan,
+      persentase_hadir:
+        totalAktifBulan > 0 ? Math.round((entry.rekap.H / totalAktifBulan) * 100) : null,
+      detail_ketidakhadiran: entry.detail_ketidakhadiran
+    };
+  });
+
+  const totalAktifSem = rekap.H + rekap.S + rekap.I + rekap.A;
+  return {
+    label,
+    periode,
+    rekap,
+    total_aktif: totalAktifSem,
+    persentase_hadir: totalAktifSem > 0 ? Math.round((rekap.H / totalAktifSem) * 100) : null,
+    bulanan
+  };
+};
+
+router.get('/:id/history', authFlexible, async (req, res) => {
+  try {
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, message: 'ID murid tidak valid' });
+
+    const murid = await prisma.murid.findUnique({
+      where: { id },
+      include: { kelas: true }
+    });
+
+    if (!murid) {
+      return res.status(404).json({ success: false, message: 'Murid tidak ditemukan' });
+    }
+
+    // Otorisasi: Wali Kelas hanya boleh melihat murid di kelasnya
+    if (req.isGuru && req.guru && req.guru.role === 'WALI_KELAS') {
+      if (murid.kelasId !== req.guru.kelas_id) {
+        return res.status(403).json({
+          success: false,
+          message: 'Akses ditolak: Anda hanya dapat melihat riwayat murid di kelas Anda'
+        });
+      }
+    } else if (!req.isAdmin && !req.isGuru) {
+      return res.status(403).json({ success: false, message: 'Akses ditolak' });
+    }
+
+    // Ambil seluruh catatan absensi siswa ini (ringan: hanya tanggal & status)
+    const allRecords = await prisma.absensi.findMany({
+      where: { muridId: id },
+      select: { tanggal: true, status: true },
+      orderBy: { tanggal: 'asc' }
+    });
+
+    // Kumpulkan tahun ajaran yang benar-benar tercatat di database
+    const academicYearsSet = new Set();
+    allRecords.forEach((rec) => {
+      const d = new Date(rec.tanggal);
+      const startYr = getAcademicStartYear(d.getUTCFullYear(), d.getUTCMonth() + 1);
+      academicYearsSet.add(startYr);
+    });
+
+    const sortedStartYears = Array.from(academicYearsSet).sort((a, b) => b - a);
+    const availableTahunAjaran = sortedStartYears.map((yr) => `${yr}/${yr + 1}`);
+
+    // Tentukan tahun ajaran aktif yang dipilih
+    const now = new Date();
+    const fallbackStartYear = getAcademicStartYear(now.getFullYear(), now.getMonth() + 1);
+    let selectedStartYear = sortedStartYears.length > 0 ? sortedStartYears[0] : fallbackStartYear;
+
+    if (req.query.tahun_ajaran) {
+      const match = String(req.query.tahun_ajaran).trim().match(/^(\d{4})\s*\/\s*(\d{4})$/);
+      if (!match) {
+        return res.status(400).json({
+          success: false,
+          message: 'Format tahun_ajaran tidak valid (gunakan format YYYY/YYYY, misal 2026/2027)'
+        });
+      }
+      selectedStartYear = parseInt(match[1], 10);
+    }
+
+    const selectedTahunAjaran = `${selectedStartYear}/${selectedStartYear + 1}`;
+    const rangeStart = new Date(Date.UTC(selectedStartYear, 6, 1)); // 1 Juli X
+    const rangeEnd = new Date(Date.UTC(selectedStartYear + 1, 5, 30, 23, 59, 59, 999)); // 30 Juni X+1
+
+    // Petakan rekaman dalam tahun ajaran terpilih per bulan
+    const byMonthMap = {};
+    allRecords.forEach((rec) => {
+      const d = new Date(rec.tanggal);
+      if (d < rangeStart || d > rangeEnd) return;
+
+      const yr = d.getUTCFullYear();
+      const mo = d.getUTCMonth() + 1;
+      const day = d.getUTCDate();
+      const key = `${yr}-${mo}`;
+
+      if (!byMonthMap[key]) {
+        byMonthMap[key] = {
+          rekap: { H: 0, S: 0, I: 0, A: 0, L: 0 },
+          detail_ketidakhadiran: []
+        };
+      }
+
+      if (byMonthMap[key].rekap[rec.status] !== undefined) {
+        byMonthMap[key].rekap[rec.status]++;
+      }
+
+      if (rec.status === 'S' || rec.status === 'I' || rec.status === 'A') {
+        byMonthMap[key].detail_ketidakhadiran.push({
+          tanggal: `${yr}-${String(mo).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+          hari: day,
+          bulan: mo,
+          tahun: yr,
+          status: rec.status
+        });
+      }
+    });
+
+    const ganjilMonths = [7, 8, 9, 10, 11, 12].map((b) => ({
+      bulan: b,
+      tahun: selectedStartYear
+    }));
+    const genapMonths = [1, 2, 3, 4, 5, 6].map((b) => ({
+      bulan: b,
+      tahun: selectedStartYear + 1
+    }));
+
+    const ganjil = buildSemesterData({
+      label: 'Semester Ganjil',
+      periode: `Juli - Desember ${selectedStartYear}`,
+      monthsSpec: ganjilMonths,
+      byMonthMap
+    });
+
+    const genap = buildSemesterData({
+      label: 'Semester Genap',
+      periode: `Januari - Juni ${selectedStartYear + 1}`,
+      monthsSpec: genapMonths,
+      byMonthMap
+    });
+
+    const tahunanRekap = {
+      H: ganjil.rekap.H + genap.rekap.H,
+      S: ganjil.rekap.S + genap.rekap.S,
+      I: ganjil.rekap.I + genap.rekap.I,
+      A: ganjil.rekap.A + genap.rekap.A,
+      L: ganjil.rekap.L + genap.rekap.L
+    };
+    const totalAktifTahun = tahunanRekap.H + tahunanRekap.S + tahunanRekap.I + tahunanRekap.A;
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        murid: {
+          id: murid.id,
+          no_urut: murid.noUrut,
+          nama_murid: murid.namaMurid,
+          status: murid.status,
+          tahun_keluar: murid.tahunKeluar,
+          kelas_id: murid.kelasId,
+          nama_kelas: murid.kelas ? murid.kelas.namaKelas : null
+        },
+        tahun_ajaran: selectedTahunAjaran,
+        available_tahun_ajaran: availableTahunAjaran,
+        semester: {
+          ganjil,
+          genap
+        },
+        tahunan: {
+          rekap: tahunanRekap,
+          total_aktif: totalAktifTahun,
+          persentase_hadir:
+            totalAktifTahun > 0 ? Math.round((tahunanRekap.H / totalAktifTahun) * 100) : null
+        }
+      }
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Gagal mengambil riwayat kehadiran siswa: ' + error.message
+    });
   }
 });
 
@@ -141,10 +370,10 @@ router.post('/', authFlexible, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Kelas tidak ditemukan' });
     }
 
-    // Jika nomor urut tidak diisi, otomatis buat no_urut terakhir + 1
+    // Jika nomor urut tidak diisi, otomatis buat no_urut terakhir + 1 (dari murid aktif)
     if (!targetNoUrut) {
       const lastMurid = await prisma.murid.findFirst({
-        where: { kelasId: targetKelasId },
+        where: { kelasId: targetKelasId, status: 'AKTIF' },
         orderBy: { noUrut: 'desc' }
       });
       targetNoUrut = lastMurid ? lastMurid.noUrut + 1 : 1;
@@ -168,6 +397,8 @@ router.post('/', authFlexible, async (req, res) => {
         id: baru.id,
         no_urut: baru.noUrut,
         nama_murid: baru.namaMurid,
+        status: baru.status,
+        tahun_keluar: baru.tahunKeluar,
         kelas_id: baru.kelasId,
         nama_kelas: baru.kelas.namaKelas
       }
@@ -210,9 +441,9 @@ router.post('/bulk', authFlexible, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Kelas tidak ditemukan' });
     }
 
-    // Cari no urut tertinggi yang ada di kelas ini
+    // Cari no urut tertinggi yang aktif di kelas ini
     const lastMurid = await prisma.murid.findFirst({
-      where: { kelasId: targetKelasId },
+      where: { kelasId: targetKelasId, status: 'AKTIF' },
       orderBy: { noUrut: 'desc' }
     });
     let currentNoUrut = lastMurid ? lastMurid.noUrut : 0;
@@ -296,12 +527,50 @@ router.put('/:id', authFlexible, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Akses ditolak' });
     }
 
-    const { nama_murid, namaMurid, no_urut, noUrut, kelas_id, kelasId } = req.body;
+    const {
+      nama_murid,
+      namaMurid,
+      no_urut,
+      noUrut,
+      kelas_id,
+      kelasId,
+      status,
+      tahun_keluar,
+      tahunKeluar
+    } = req.body;
     const updateData = {};
 
     if (nama_murid || namaMurid) updateData.namaMurid = (nama_murid || namaMurid).trim();
     if (no_urut !== undefined || noUrut !== undefined) {
       updateData.noUrut = parseId(no_urut !== undefined ? no_urut : noUrut);
+    }
+
+    // Status keaktifan siswa & tahun keluar hanya bisa diubah oleh Admin
+    if (status !== undefined) {
+      const normalizedStatus = String(status).trim().toUpperCase();
+      if (!VALID_STATUS_MURID.includes(normalizedStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Status keaktifan tidak valid. Pilihan: AKTIF, LULUS, MUTASI_KELUAR'
+        });
+      }
+      if (normalizedStatus !== existing.status && !req.isAdmin) {
+        return res.status(403).json({
+          success: false,
+          message: 'Akses ditolak: Hanya Admin yang dapat mengubah status keaktifan siswa'
+        });
+      }
+      if (req.isAdmin) {
+        updateData.status = normalizedStatus;
+        if (normalizedStatus === 'AKTIF' && tahun_keluar === undefined && tahunKeluar === undefined) {
+          updateData.tahunKeluar = null;
+        }
+      }
+    }
+
+    if (req.isAdmin && (tahun_keluar !== undefined || tahunKeluar !== undefined)) {
+      const rawTahun = tahun_keluar !== undefined ? tahun_keluar : tahunKeluar;
+      updateData.tahunKeluar = rawTahun ? String(rawTahun).trim() : null;
     }
 
     // Hanya Admin yang boleh memindahkan kelas murid (misal: kenaikan kelas)
@@ -327,6 +596,8 @@ router.put('/:id', authFlexible, async (req, res) => {
         id: updated.id,
         no_urut: updated.noUrut,
         nama_murid: updated.namaMurid,
+        status: updated.status,
+        tahun_keluar: updated.tahunKeluar,
         kelas_id: updated.kelasId,
         nama_kelas: updated.kelas.namaKelas
       }

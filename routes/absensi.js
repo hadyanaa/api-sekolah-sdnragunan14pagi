@@ -94,9 +94,9 @@ router.get('/', authFlexible, async (req, res) => {
     const startDate = new Date(Date.UTC(tahun, bulan - 1, 1));
     const endDate = new Date(Date.UTC(tahun, bulan - 1, daysInMonth, 23, 59, 59, 999));
 
-    // Ambil semua murid di kelas tersebut
+    // Ambil semua murid aktif di kelas tersebut
     const murids = await prisma.murid.findMany({
-      where: { kelasId: targetKelasId },
+      where: { kelasId: targetKelasId, status: 'AKTIF' },
       orderBy: { noUrut: 'asc' }
     });
 
@@ -282,7 +282,9 @@ router.get('/daftar-kelas', authFlexible, async (req, res) => {
     const listKelas = await prisma.kelas.findMany({
       include: {
         _count: {
-          select: { murid: true }
+          select: {
+            murid: { where: { status: 'AKTIF' } }
+          }
         }
       },
       orderBy: { namaKelas: 'asc' }
