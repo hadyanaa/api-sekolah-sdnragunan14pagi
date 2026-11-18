@@ -22,9 +22,32 @@ router.get('/', authFlexible, async (req, res) => {
     const where = {};
 
     if (req.query.kelas_id) {
-      where.kelasId = parseId(req.query.kelas_id);
+      const requestedKelasId = parseId(req.query.kelas_id);
+      if (req.isGuru && req.guru.role === 'GURU_MAPEL') {
+        const assigned = await prisma.guruKelas.findMany({
+          where: { guruId: req.guru.id },
+          select: { kelasId: true }
+        });
+        const assignedIds = assigned.map((a) => a.kelasId);
+        if (assignedIds.length > 0 && !assignedIds.includes(requestedKelasId)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Akses ditolak: Kelas ini bukan bagian dari kelas yang Anda ampu'
+          });
+        }
+      }
+      where.kelasId = requestedKelasId;
     } else if (req.isGuru && req.guru.role === 'WALI_KELAS') {
       where.kelasId = req.guru.kelas_id;
+    } else if (req.isGuru && req.guru.role === 'GURU_MAPEL') {
+      const assigned = await prisma.guruKelas.findMany({
+        where: { guruId: req.guru.id },
+        select: { kelasId: true }
+      });
+      const assignedIds = assigned.map((a) => a.kelasId);
+      if (assignedIds.length > 0) {
+        where.kelasId = { in: assignedIds };
+      }
     }
 
     const statusParam = String(req.query.status || 'AKTIF').trim().toUpperCase();
@@ -187,12 +210,24 @@ router.get('/:id/history', authFlexible, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Murid tidak ditemukan' });
     }
 
-    // Otorisasi: Wali Kelas hanya boleh melihat murid di kelasnya
+    // Otorisasi: Wali Kelas hanya boleh melihat murid di kelasnya; Guru Mapel sesuai kelas ampu (jika dibatasi)
     if (req.isGuru && req.guru && req.guru.role === 'WALI_KELAS') {
       if (murid.kelasId !== req.guru.kelas_id) {
         return res.status(403).json({
           success: false,
           message: 'Akses ditolak: Anda hanya dapat melihat riwayat murid di kelas Anda'
+        });
+      }
+    } else if (req.isGuru && req.guru && req.guru.role === 'GURU_MAPEL') {
+      const assigned = await prisma.guruKelas.findMany({
+        where: { guruId: req.guru.id },
+        select: { kelasId: true }
+      });
+      const assignedIds = assigned.map((a) => a.kelasId);
+      if (assignedIds.length > 0 && !assignedIds.includes(murid.kelasId)) {
+        return res.status(403).json({
+          success: false,
+          message: 'Akses ditolak: Anda hanya dapat melihat riwayat murid di kelas yang Anda ampu'
         });
       }
     } else if (!req.isAdmin && !req.isGuru) {

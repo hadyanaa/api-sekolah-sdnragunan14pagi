@@ -7,17 +7,39 @@ const authFlexible = require('../middleware/authFlexible');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+const formatGuruAuthProfile = (guru) => {
+  const kelasMapel = (guru.kelasMapel || [])
+    .map((km) => ({
+      id: km.kelas.id,
+      nama_kelas: km.kelas.namaKelas
+    }))
+    .sort((a, b) => a.nama_kelas.localeCompare(b.nama_kelas));
+
+  return {
+    id: guru.id,
+    username: guru.username,
+    nip: guru.username, // backward compatibility
+    nip_nikki: guru.nipNikki || null,
+    nama_guru: guru.namaGuru,
+    role: guru.role,
+    kelas_id: guru.kelasId,
+    nama_kelas: guru.kelas ? guru.kelas.namaKelas : null,
+    kelas_mapel_ids: kelasMapel.map((k) => k.id),
+    kelas_mapel: kelasMapel
+  };
+};
+
 // POST /api/auth/login
-// Menerima NIP/Username dan password. Mendukung login Admin maupun Guru.
+// Menerima Username (atau NIP) dan password. Mendukung login Admin, Guru, maupun Piket.
 router.post('/login', async (req, res) => {
   try {
     const { nip, username, password } = req.body;
-    const nipTarget = (nip || username || '').trim();
+    const loginId = (username || nip || '').trim();
 
-    if (!nipTarget || !password) {
+    if (!loginId || !password) {
       return res.status(400).json({
         success: false,
-        message: 'NIP dan password wajib diisi'
+        message: 'Username dan password wajib diisi'
       });
     }
 
@@ -27,7 +49,7 @@ router.post('/login', async (req, res) => {
     const expectedUsername = process.env.ADMIN_USERNAME || 'admin';
     const expectedPassword = process.env.ADMIN_PASSWORD || '$2b$10$8nSzjNUC6gPXXhh9Ojor9.NCjVXId1XimBGk4jMbZgc2qkQqktsg.';
 
-    if (nipTarget === expectedUsername) {
+    if (loginId === expectedUsername) {
       const isAdminMatch = expectedPassword.startsWith('$2')
         ? bcrypt.compareSync(password, expectedPassword)
         : password === expectedPassword;
@@ -35,14 +57,18 @@ router.post('/login', async (req, res) => {
       if (isAdminMatch) {
         const adminProfile = {
           id: 0,
+          username: expectedUsername,
           nip: expectedUsername,
+          nip_nikki: null,
           nama_guru: 'Administrator Sekolah',
           role: 'ADMIN',
           kelas_id: null,
-          nama_kelas: null
+          nama_kelas: null,
+          kelas_mapel_ids: [],
+          kelas_mapel: []
         };
         const token = jwt.sign(
-          { username: expectedUsername, ...adminProfile },
+          { ...adminProfile },
           secret,
           { expiresIn: '24h' }
         );
@@ -56,18 +82,23 @@ router.post('/login', async (req, res) => {
       }
     }
 
-    // 2. Cari guru berdasarkan NIP
+    // 2. Cari guru/piket berdasarkan username
     const guru = await prisma.guru.findUnique({
-      where: { nip: nipTarget },
+      where: { username: loginId },
       include: {
-        kelas: true
+        kelas: true,
+        kelasMapel: {
+          include: {
+            kelas: { select: { id: true, namaKelas: true } }
+          }
+        }
       }
     });
 
     if (!guru) {
       return res.status(401).json({
         success: false,
-        message: 'NIP atau password salah'
+        message: 'Username atau password salah'
       });
     }
 
@@ -76,19 +107,11 @@ router.post('/login', async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'NIP atau password salah'
+        message: 'Username atau password salah'
       });
     }
 
-    const payload = {
-      id: guru.id,
-      nip: guru.nip,
-      nama_guru: guru.namaGuru,
-      role: guru.role,
-      kelas_id: guru.kelasId,
-      nama_kelas: guru.kelas ? guru.kelas.namaKelas : null
-    };
-
+    const payload = formatGuruAuthProfile(guru);
     const token = jwt.sign(payload, secret, { expiresIn: '7d' });
 
     return res.status(200).json({
@@ -113,18 +136,29 @@ router.get('/me', authFlexible, async (req, res) => {
         success: true,
         guru: {
           id: 0,
+          username: req.user.username || req.user.nip || 'admin',
           nip: req.user.username || req.user.nip || 'admin',
+          nip_nikki: null,
           nama_guru: 'Administrator Sekolah',
           role: 'ADMIN',
           kelas_id: null,
-          nama_kelas: null
+          nama_kelas: null,
+          kelas_mapel_ids: [],
+          kelas_mapel: []
         }
       });
     }
 
     const guru = await prisma.guru.findUnique({
       where: { id: req.guru.id },
-      include: { kelas: true }
+      include: {
+        kelas: true,
+        kelasMapel: {
+          include: {
+            kelas: { select: { id: true, namaKelas: true } }
+          }
+        }
+      }
     });
 
     if (!guru) {
@@ -136,14 +170,7 @@ router.get('/me', authFlexible, async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      guru: {
-        id: guru.id,
-        nip: guru.nip,
-        nama_guru: guru.namaGuru,
-        role: guru.role,
-        kelas_id: guru.kelasId,
-        nama_kelas: guru.kelas ? guru.kelas.namaKelas : null
-      }
+      guru: formatGuruAuthProfile(guru)
     });
   } catch (error) {
     return res.status(500).json({

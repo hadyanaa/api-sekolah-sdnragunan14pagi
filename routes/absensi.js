@@ -38,8 +38,29 @@ router.get('/', authFlexible, async (req, res) => {
           message: 'Akun Anda belum dihubungkan ke kelas manapun sebagai Wali Kelas'
         });
       }
+    } else if (req.isGuru && guru && guru.role === 'GURU_MAPEL') {
+      const assigned = await prisma.guruKelas.findMany({
+        where: { guruId: guru.id },
+        select: { kelasId: true }
+      });
+      const assignedIds = assigned.map((a) => a.kelasId);
+
+      if (req.query.kelas_id) {
+        targetKelasId = parseInt(req.query.kelas_id, 10);
+        if (assignedIds.length > 0 && !assignedIds.includes(targetKelasId)) {
+          return res.status(403).json({
+            success: false,
+            message: 'Akses ditolak: Kelas ini bukan bagian dari kelas yang Anda ampu'
+          });
+        }
+      } else if (assignedIds.length > 0) {
+        targetKelasId = assignedIds[0];
+      } else {
+        const firstClass = await prisma.kelas.findFirst({ orderBy: { namaKelas: 'asc' } });
+        if (firstClass) targetKelasId = firstClass.id;
+      }
     } else {
-      // Admin atau Guru Mapel bisa mengirim kelas_id lewat query
+      // Admin atau Piket bisa mengirim kelas_id lewat query
       if (req.query.kelas_id) {
         targetKelasId = parseInt(req.query.kelas_id, 10);
       } else if (guru && guru.kelas_id) {
@@ -229,7 +250,8 @@ router.post('/', authFlexible, async (req, res) => {
       });
     }
 
-    // Keamanan: Jika Wali Kelas, pastikan semua murid_id yang diinput adalah murid di kelasnya
+    // Keamanan: Jika Wali Kelas, pastikan semua murid_id adalah murid di kelasnya.
+    // Jika Guru Mapel punya daftar kelas ampu khusus, pastikan murid berada di kelas tersebut.
     if (req.isGuru && req.guru && req.guru.role === 'WALI_KELAS') {
       const muridIds = [...new Set(validItems.map((v) => v.muridId))];
       const muridLain = await prisma.murid.findFirst({
@@ -244,6 +266,27 @@ router.post('/', authFlexible, async (req, res) => {
           success: false,
           message: 'Akses ditolak: Anda hanya dapat menyimpan absensi untuk murid di kelas Anda'
         });
+      }
+    } else if (req.isGuru && req.guru && req.guru.role === 'GURU_MAPEL') {
+      const assigned = await prisma.guruKelas.findMany({
+        where: { guruId: req.guru.id },
+        select: { kelasId: true }
+      });
+      const assignedIds = assigned.map((a) => a.kelasId);
+      if (assignedIds.length > 0) {
+        const muridIds = [...new Set(validItems.map((v) => v.muridId))];
+        const muridLain = await prisma.murid.findFirst({
+          where: {
+            id: { in: muridIds },
+            kelasId: { notIn: assignedIds }
+          }
+        });
+        if (muridLain) {
+          return res.status(403).json({
+            success: false,
+            message: 'Akses ditolak: Anda hanya dapat menyimpan absensi untuk kelas yang Anda ampu'
+          });
+        }
       }
     }
 

@@ -252,32 +252,47 @@ enum StatusMurid {
 
 // Tabel 1: Kelas (1A sampai 6B)
 model Kelas {
-  id        Int      @id @default(autoincrement())
-  namaKelas String   @unique @map("nama_kelas")
+  id        Int         @id @default(autoincrement())
+  namaKelas String      @unique @map("nama_kelas")
 
-  guru      Guru[]
+  guru      Guru[]      @relation("WaliKelas")
+  guruMapel GuruKelas[]
   murid     Murid[]
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
 
   @@map("kelas")
 }
 
 // Tabel 2: Guru
 model Guru {
-  id        Int      @id @default(autoincrement())
-  nip       String   @unique
-  namaGuru  String   @map("nama_guru")
-  password  String
-  role      RoleGuru @default(WALI_KELAS)
-  kelasId   Int?     @map("kelas_id")
-  kelas     Kelas?   @relation(fields: [kelasId], references: [id], onDelete: SetNull)
+  id         Int         @id @default(autoincrement())
+  username   String      @unique
+  nipNikki   String?     @map("nip_nikki")
+  namaGuru   String      @map("nama_guru")
+  password   String
+  role       RoleGuru    @default(WALI_KELAS)
+  kelasId    Int?        @map("kelas_id")
+  kelas      Kelas?      @relation("WaliKelas", fields: [kelasId], references: [id], onDelete: SetNull)
+  kelasMapel GuruKelas[]
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt  DateTime    @default(now()) @map("created_at")
+  updatedAt  DateTime    @updatedAt @map("updated_at")
 
   @@map("guru")
+}
+
+// Relasi Many-to-Many: 1 Guru Mapel dapat mengajar banyak kelas, 1 Kelas dapat diisi banyak Guru Mapel
+model GuruKelas {
+  guruId    Int      @map("guru_id")
+  kelasId   Int      @map("kelas_id")
+  guru      Guru     @relation(fields: [guruId], references: [id], onDelete: Cascade)
+  kelas     Kelas    @relation(fields: [kelasId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@id([guruId, kelasId])
+  @@map("guru_kelas")
 }
 
 // Tabel 3: Murid

@@ -22,8 +22,21 @@ router.get('/', async (req, res) => {
           select: {
             id: true,
             namaGuru: true,
-            nip: true,
+            username: true,
+            nipNikki: true,
             role: true
+          }
+        },
+        guruMapel: {
+          include: {
+            guru: {
+              select: {
+                id: true,
+                namaGuru: true,
+                username: true,
+                nipNikki: true
+              }
+            }
           }
         },
         _count: {
@@ -35,18 +48,32 @@ router.get('/', async (req, res) => {
       orderBy: { namaKelas: 'asc' }
     });
 
-    const formatted = listKelas.map((k) => ({
-      id: k.id,
-      nama_kelas: k.namaKelas,
-      jumlah_murid: k._count.murid,
-      wali_kelas: k.guru.find((g) => g.role === 'WALI_KELAS')
-        ? {
-            id: k.guru.find((g) => g.role === 'WALI_KELAS').id,
-            nama_guru: k.guru.find((g) => g.role === 'WALI_KELAS').namaGuru,
-            nip: k.guru.find((g) => g.role === 'WALI_KELAS').nip
-          }
-        : null
-    }));
+    const formatted = listKelas.map((k) => {
+      const wali = k.guru.find((g) => g.role === 'WALI_KELAS');
+      const mapelList = (k.guruMapel || [])
+        .map((gm) => ({
+          id: gm.guru.id,
+          nama_guru: gm.guru.namaGuru,
+          username: gm.guru.username,
+          nip_nikki: gm.guru.nipNikki || null
+        }))
+        .sort((a, b) => a.nama_guru.localeCompare(b.nama_guru));
+
+      return {
+        id: k.id,
+        nama_kelas: k.namaKelas,
+        jumlah_murid: k._count.murid,
+        wali_kelas: wali
+          ? {
+              id: wali.id,
+              nama_guru: wali.namaGuru,
+              username: wali.username,
+              nip_nikki: wali.nipNikki || null
+            }
+          : null,
+        guru_mapel: mapelList
+      };
+    });
 
     return res.status(200).json({
       success: true,
@@ -73,9 +100,17 @@ router.get('/:id', async (req, res) => {
       where: { id },
       include: {
         guru: {
-          select: { id: true, namaGuru: true, nip: true, role: true }
+          select: { id: true, namaGuru: true, username: true, nipNikki: true, role: true }
+        },
+        guruMapel: {
+          include: {
+            guru: {
+              select: { id: true, namaGuru: true, username: true, nipNikki: true }
+            }
+          }
         },
         murid: {
+          where: { status: 'AKTIF' },
           orderBy: { noUrut: 'asc' }
         }
       }
@@ -91,6 +126,12 @@ router.get('/:id', async (req, res) => {
         id: kelas.id,
         nama_kelas: kelas.namaKelas,
         wali_kelas: kelas.guru.find((g) => g.role === 'WALI_KELAS') || null,
+        guru_mapel: (kelas.guruMapel || []).map((gm) => ({
+          id: gm.guru.id,
+          nama_guru: gm.guru.namaGuru,
+          username: gm.guru.username,
+          nip_nikki: gm.guru.nipNikki || null
+        })),
         total_murid: kelas.murid.length,
         murid: kelas.murid.map((m) => ({
           id: m.id,

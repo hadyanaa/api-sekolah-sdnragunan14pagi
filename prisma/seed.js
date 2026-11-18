@@ -163,10 +163,11 @@ async function main() {
 
   const defaultPassword = await bcrypt.hash('guru123', 10);
   await prisma.guru.upsert({
-    where: { nip: '198501012010011001' },
+    where: { username: '198501012010011001' },
     update: { password: defaultPassword, role: 'WALI_KELAS', kelasId: kelasRecords['1A'].id },
     create: {
-      nip: '198501012010011001',
+      username: '198501012010011001',
+      nipNikki: '198501012010011001',
       namaGuru: 'Siti Aminah, S.Pd',
       password: defaultPassword,
       role: 'WALI_KELAS',
@@ -175,10 +176,11 @@ async function main() {
   });
 
   await prisma.guru.upsert({
-    where: { nip: '199002022015022002' },
+    where: { username: '199002022015022002' },
     update: { password: defaultPassword, role: 'GURU_MAPEL', kelasId: null },
     create: {
-      nip: '199002022015022002',
+      username: '199002022015022002',
+      nipNikki: '199002022015022002',
       namaGuru: 'Bambang Irawan, S.Pd',
       password: defaultPassword,
       role: 'GURU_MAPEL',

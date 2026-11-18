@@ -45,41 +45,46 @@ router.post('/login', async (req, res) => {
 
     // 2. Jika bukan admin, cek apakah Guru di database
     const guru = await prisma.guru.findUnique({
-      where: { nip: identifier },
-      include: { kelas: true }
+      where: { username: identifier },
+      include: {
+        kelas: true,
+        kelasMapel: {
+          include: {
+            kelas: { select: { id: true, namaKelas: true } }
+          }
+        }
+      }
     });
 
     if (guru && bcrypt.compareSync(password, guru.password)) {
+      const kelasMapel = (guru.kelasMapel || []).map((km) => ({
+        id: km.kelas.id,
+        nama_kelas: km.kelas.namaKelas
+      }));
+      const profile = {
+        id: guru.id,
+        username: guru.username,
+        nip: guru.username,
+        nip_nikki: guru.nipNikki || null,
+        nama_guru: guru.namaGuru,
+        role: guru.role,
+        kelas_id: guru.kelasId,
+        nama_kelas: guru.kelas ? guru.kelas.namaKelas : null,
+        kelas_mapel_ids: kelasMapel.map((k) => k.id),
+        kelas_mapel: kelasMapel
+      };
       const secret = process.env.JWT_SECRET || 'sdn14ragunan_jwt_secret_key_super_secure_2026';
-      const token = jwt.sign(
-        {
-          id: guru.id,
-          nip: guru.nip,
-          nama_guru: guru.namaGuru,
-          role: guru.role,
-          kelas_id: guru.kelasId,
-          nama_kelas: guru.kelas ? guru.kelas.namaKelas : null
-        },
-        secret,
-        { expiresIn: '7d' }
-      );
+      const token = jwt.sign(profile, secret, { expiresIn: '7d' });
 
       return res.status(200).json({
         success: true,
         message: 'Login berhasil',
         token,
-        guru: {
-          id: guru.id,
-          nip: guru.nip,
-          nama_guru: guru.namaGuru,
-          role: guru.role,
-          kelas_id: guru.kelasId,
-          nama_kelas: guru.kelas ? guru.kelas.namaKelas : null
-        }
+        guru: profile
       });
     }
 
-    return res.status(401).json({ message: 'NIP/Username atau password salah' });
+    return res.status(401).json({ message: 'Username atau password salah' });
   } catch (error) {
     return res.status(500).json({ message: 'Terjadi kesalahan pada server: ' + error.message });
   }
