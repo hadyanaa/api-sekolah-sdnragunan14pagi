@@ -48,6 +48,9 @@ const formatMurid = (m) => ({
   id: m.id,
   no_urut: m.noUrut,
   nama_murid: m.namaMurid,
+  jenis_kelamin: m.jenisKelamin || null,
+  agama: m.agama || null,
+  no_kk: m.noKk || null,
   nipd: m.nipd || null,
   nisn: m.nisn || null,
   nik: m.nik || null,
@@ -485,6 +488,11 @@ router.post('/', authFlexible, async (req, res) => {
       noUrut,
       kelas_id,
       kelasId,
+      jenis_kelamin,
+      jenisKelamin,
+      agama,
+      no_kk,
+      noKk,
       nipd,
       nisn,
       nik,
@@ -558,6 +566,10 @@ router.post('/', authFlexible, async (req, res) => {
           noUrut: targetNoUrut,
           kelasId: targetKelasId,
           tahunAjaranAktif: currentTA,
+          jenisKelamin:
+            cleanOptStr(jenis_kelamin !== undefined ? jenis_kelamin : jenisKelamin) ?? null,
+          agama: cleanOptStr(agama) ?? null,
+          noKk: cleanOptStr(no_kk !== undefined ? no_kk : noKk) ?? null,
           nipd: cleanOptStr(nipd) ?? null,
           nisn: cleanOptStr(nisn) ?? null,
           nik: cleanOptStr(nik) ?? null,
@@ -877,6 +889,11 @@ router.put('/:id', authFlexible, async (req, res) => {
       tahunKeluar,
       tahun_ajaran_aktif,
       tahunAjaranAktif,
+      jenis_kelamin,
+      jenisKelamin,
+      agama,
+      no_kk,
+      noKk,
       nipd,
       nisn,
       nik,
@@ -897,6 +914,15 @@ router.put('/:id', authFlexible, async (req, res) => {
     }
 
     // Biodata opsional (boleh diedit oleh Admin dan Wali Kelas)
+    if (jenis_kelamin !== undefined || jenisKelamin !== undefined) {
+      updateData.jenisKelamin = cleanOptStr(
+        jenis_kelamin !== undefined ? jenis_kelamin : jenisKelamin
+      );
+    }
+    if (agama !== undefined) updateData.agama = cleanOptStr(agama);
+    if (no_kk !== undefined || noKk !== undefined) {
+      updateData.noKk = cleanOptStr(no_kk !== undefined ? no_kk : noKk);
+    }
     if (nipd !== undefined) updateData.nipd = cleanOptStr(nipd);
     if (nisn !== undefined) updateData.nisn = cleanOptStr(nisn);
     if (nik !== undefined) updateData.nik = cleanOptStr(nik);

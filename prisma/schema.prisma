@@ -301,6 +301,9 @@ model Murid {
   id               Int                 @id @default(autoincrement())
   namaMurid        String              @map("nama_murid")
   noUrut           Int                 @map("no_urut")
+  jenisKelamin     String?             @map("jenis_kelamin") // "Laki-laki" / "Perempuan"
+  agama            String?
+  noKk             String?             @map("no_kk")
   nipd             String?
   nisn             String?
   nik              String?
