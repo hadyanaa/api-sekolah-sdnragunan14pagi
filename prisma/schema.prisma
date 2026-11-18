@@ -233,6 +233,7 @@ model Schedule {
 enum RoleGuru {
   WALI_KELAS
   GURU_MAPEL
+  PIKET
 }
 
 enum StatusAbsensi {

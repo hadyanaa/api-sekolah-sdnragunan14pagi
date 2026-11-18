@@ -175,6 +175,14 @@ router.get('/', authFlexible, async (req, res) => {
 // ==========================================
 router.post('/', authFlexible, async (req, res) => {
   try {
+    // Akun Piket hanya memiliki izin melihat presensi (read-only)
+    if (req.isGuru && req.guru && req.guru.role === 'PIKET') {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak: Akun Piket hanya memiliki izin melihat presensi'
+      });
+    }
+
     const rawItems = Array.isArray(req.body) ? req.body : (req.body.data || [req.body]);
 
     if (!Array.isArray(rawItems) || rawItems.length === 0) {

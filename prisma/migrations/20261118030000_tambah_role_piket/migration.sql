@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "RoleGuru" ADD VALUE IF NOT EXISTS 'PIKET';

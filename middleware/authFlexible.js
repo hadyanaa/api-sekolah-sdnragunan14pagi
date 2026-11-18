@@ -2,7 +2,7 @@ const jwt = require('jsonwebtoken');
 
 /**
  * Middleware autentikasi fleksibel:
- * Menerima token Admin (role: 'admin') maupun token Guru (WALI_KELAS / GURU_MAPEL).
+ * Menerima token Admin (role: 'admin') maupun token Guru/Piket (WALI_KELAS / GURU_MAPEL / PIKET).
  */
 const authFlexible = (req, res, next) => {
   const authHeader = req.headers.authorization;

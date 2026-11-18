@@ -6,6 +6,8 @@ const authFlexible = require('../middleware/authFlexible');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+const VALID_GURU_ROLES = ['WALI_KELAS', 'GURU_MAPEL', 'PIKET'];
+
 const parseId = (val) => {
   const p = parseInt(val, 10);
   return isNaN(p) ? null : p;
@@ -127,22 +129,24 @@ router.post('/', authFlexible, async (req, res) => {
       });
     }
 
-    if (!['WALI_KELAS', 'GURU_MAPEL'].includes(roleTarget)) {
+    if (!VALID_GURU_ROLES.includes(roleTarget)) {
       return res.status(400).json({
         success: false,
-        message: "Role harus 'WALI_KELAS' atau 'GURU_MAPEL'"
+        message: "Role harus 'WALI_KELAS', 'GURU_MAPEL', atau 'PIKET'"
       });
     }
+
+    const resolvedKelasId = roleTarget === 'WALI_KELAS' ? targetKelasId : null;
 
     // Cek apakah NIP sudah ada
     const existingNip = await prisma.guru.findUnique({ where: { nip: nipTarget } });
     if (existingNip) {
-      return res.status(400).json({ success: false, message: `NIP '${nipTarget}' sudah terdaftar` });
+      return res.status(400).json({ success: false, message: `NIP/Username '${nipTarget}' sudah terdaftar` });
     }
 
     // Jika kelas_id diberikan, pastikan kelas ada
-    if (targetKelasId) {
-      const existingKelas = await prisma.kelas.findUnique({ where: { id: targetKelasId } });
+    if (resolvedKelasId) {
+      const existingKelas = await prisma.kelas.findUnique({ where: { id: resolvedKelasId } });
       if (!existingKelas) {
         return res.status(400).json({ success: false, message: 'Kelas yang dipilih tidak ditemukan' });
       }
@@ -156,7 +160,7 @@ router.post('/', authFlexible, async (req, res) => {
         namaGuru: namaTarget,
         password: hashedPassword,
         role: roleTarget,
-        kelasId: targetKelasId
+        kelasId: resolvedKelasId
       },
       include: {
         kelas: true
@@ -194,7 +198,15 @@ router.put('/:id', authFlexible, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Data guru tidak ditemukan' });
     }
 
-    // Otorisasi: Admin atau Guru pemilik akun itu sendiri
+    // Otorisasi: Akun PIKET hanya boleh dikelola/edit oleh Admin.
+    // Akun guru lain bisa diedit Admin atau pemilik akun itu sendiri.
+    if (existing.role === 'PIKET' && !req.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak: Akun Piket hanya dapat dikelola atau diubah oleh Admin'
+      });
+    }
+
     if (!req.isAdmin && (!req.isGuru || req.guru.id !== id)) {
       return res.status(403).json({
         success: false,
@@ -223,13 +235,20 @@ router.put('/:id', authFlexible, async (req, res) => {
 
       if (role) {
         const roleClean = role.toUpperCase();
-        if (!['WALI_KELAS', 'GURU_MAPEL'].includes(roleClean)) {
-          return res.status(400).json({ success: false, message: "Role harus 'WALI_KELAS' atau 'GURU_MAPEL'" });
+        if (!VALID_GURU_ROLES.includes(roleClean)) {
+          return res.status(400).json({
+            success: false,
+            message: "Role harus 'WALI_KELAS', 'GURU_MAPEL', atau 'PIKET'"
+          });
         }
         updateData.role = roleClean;
+        if (roleClean !== 'WALI_KELAS') {
+          updateData.kelasId = null;
+        }
       }
 
-      if (kelas_id !== undefined || kelasId !== undefined) {
+      const nextRole = updateData.role || existing.role;
+      if (nextRole === 'WALI_KELAS' && (kelas_id !== undefined || kelasId !== undefined)) {
         const rawKelasId = kelas_id !== undefined ? kelas_id : kelasId;
         updateData.kelasId = rawKelasId ? parseId(rawKelasId) : null;
       }
