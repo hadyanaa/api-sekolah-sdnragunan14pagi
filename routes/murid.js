@@ -5,18 +5,124 @@ const authFlexible = require('../middleware/authFlexible');
 const router = express.Router();
 const prisma = new PrismaClient();
 
+const VALID_STATUS_MURID = ['AKTIF', 'LULUS', 'MUTASI_KELUAR'];
+
 const parseId = (val) => {
   const p = parseInt(val, 10);
   return isNaN(p) ? null : p;
 };
+
+const cleanOptStr = (val) => {
+  if (val === undefined) return undefined;
+  if (val === null) return null;
+  const s = String(val).trim();
+  return s || null;
+};
+
+const parseOptionalDate = (val) => {
+  if (val === undefined) return { provided: false, value: undefined };
+  if (val === null || String(val).trim() === '') return { provided: true, value: null };
+  const isoStr = String(val).trim().split('T')[0];
+  const parts = isoStr.split('-');
+  if (parts.length !== 3) return { provided: true, invalid: true };
+  const y = parseInt(parts[0], 10);
+  const m = parseInt(parts[1], 10) - 1;
+  const d = parseInt(parts[2], 10);
+  if (isNaN(y) || isNaN(m) || isNaN(d)) return { provided: true, invalid: true };
+  const dateObj = new Date(Date.UTC(y, m, d));
+  if (isNaN(dateObj.getTime())) return { provided: true, invalid: true };
+  return { provided: true, value: dateObj };
+};
+
+const formatDateISO = (d) => (d ? new Date(d).toISOString().split('T')[0] : null);
+
+const getCurrentAcademicYear = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = now.getMonth() + 1;
+  const start = m >= 7 ? y : y - 1;
+  return `${start}/${start + 1}`;
+};
+
+const formatMurid = (m) => ({
+  id: m.id,
+  no_urut: m.noUrut,
+  nama_murid: m.namaMurid,
+  nipd: m.nipd || null,
+  nisn: m.nisn || null,
+  nik: m.nik || null,
+  tempat_lahir: m.tempatLahir || null,
+  tanggal_lahir: formatDateISO(m.tanggalLahir),
+  alamat: m.alamat || null,
+  no_hp: m.noHp || null,
+  status: m.status,
+  tahun_keluar: m.tahunKeluar || null,
+  tahun_ajaran_aktif: m.tahunAjaranAktif || null,
+  kelas_id: m.kelasId,
+  nama_kelas: m.kelas ? m.kelas.namaKelas : null,
+  created_at: m.createdAt
+});
+
+async function upsertRiwayatKelas(tx, { muridId, tahunAjaran, kelasId }) {
+  const kelas = await tx.kelas.findUnique({
+    where: { id: kelasId },
+    include: {
+      guru: {
+        where: { role: 'WALI_KELAS' },
+        orderBy: { id: 'asc' },
+        take: 1
+      }
+    }
+  });
+  if (!kelas) return null;
+
+  const wali = kelas.guru?.[0] || null;
+  return tx.riwayatKelasMurid.upsert({
+    where: {
+      muridId_tahunAjaran: {
+        muridId,
+        tahunAjaran
+      }
+    },
+    update: {
+      kelasId: kelas.id,
+      namaKelas: kelas.namaKelas,
+      waliKelasId: wali ? wali.id : null,
+      namaWaliKelas: wali ? wali.namaGuru : null
+    },
+    create: {
+      muridId,
+      tahunAjaran,
+      kelasId: kelas.id,
+      namaKelas: kelas.namaKelas,
+      waliKelasId: wali ? wali.id : null,
+      namaWaliKelas: wali ? wali.namaGuru : null
+    }
+  });
+}
+
+async function resequenceClassAlphabetically(tx, kelasId) {
+  const activeStudents = await tx.murid.findMany({
+    where: { kelasId, status: 'AKTIF' },
+    select: { id: true, namaMurid: true }
+  });
+  activeStudents.sort((a, b) =>
+    a.namaMurid.localeCompare(b.namaMurid, 'id', { sensitivity: 'base' })
+  );
+  for (let i = 0; i < activeStudents.length; i++) {
+    await tx.murid.update({
+      where: { id: activeStudents[i].id },
+      data: { noUrut: i + 1 }
+    });
+  }
+  return activeStudents.length;
+}
 
 // ==========================================
 // 1. GET /api/murid (Daftar Murid)
 // Support query: ?kelas_id=1 & ?q=budi & ?status=AKTIF|LULUS|MUTASI_KELUAR|NONAKTIF|SEMUA
 // Jika Wali Kelas tanpa query: otomatis filter kelasnya
 // ==========================================
-const VALID_STATUS_MURID = ['AKTIF', 'LULUS', 'MUTASI_KELUAR'];
-
 router.get('/', authFlexible, async (req, res) => {
   try {
     const where = {};
@@ -82,16 +188,7 @@ router.get('/', authFlexible, async (req, res) => {
       ]
     });
 
-    const formatted = listMurid.map((m) => ({
-      id: m.id,
-      no_urut: m.noUrut,
-      nama_murid: m.namaMurid,
-      status: m.status,
-      tahun_keluar: m.tahunKeluar,
-      kelas_id: m.kelasId,
-      nama_kelas: m.kelas ? m.kelas.namaKelas : null,
-      created_at: m.createdAt
-    }));
+    const formatted = listMurid.map(formatMurid);
 
     return res.status(200).json({
       success: true,
@@ -129,15 +226,8 @@ router.get('/:id', authFlexible, async (req, res) => {
     return res.status(200).json({
       success: true,
       data: {
-        id: murid.id,
-        no_urut: murid.noUrut,
-        nama_murid: murid.namaMurid,
-        status: murid.status,
-        tahun_keluar: murid.tahunKeluar,
-        kelas_id: murid.kelasId,
-        nama_kelas: murid.kelas ? murid.kelas.namaKelas : null,
-        total_rekaman_absensi: murid._count.absensi,
-        created_at: murid.createdAt
+        ...formatMurid(murid),
+        total_rekaman_absensi: murid._count.absensi
       }
     });
   } catch (error) {
@@ -146,7 +236,7 @@ router.get('/:id', authFlexible, async (req, res) => {
 });
 
 // ==========================================
-// 2B. GET /api/murid/:id/history (Riwayat Kehadiran Per Tahun Ajaran)
+// 2B. GET /api/murid/:id/history (Riwayat Kehadiran, Biodata & Kelas per Tahun Ajaran)
 // Query opsional: ?tahun_ajaran=2026/2027
 // ==========================================
 const NAMA_BULAN_LIST = [
@@ -203,7 +293,12 @@ router.get('/:id/history', authFlexible, async (req, res) => {
 
     const murid = await prisma.murid.findUnique({
       where: { id },
-      include: { kelas: true }
+      include: {
+        kelas: true,
+        riwayatKelas: {
+          orderBy: { tahunAjaran: 'desc' }
+        }
+      }
     });
 
     if (!murid) {
@@ -241,18 +336,21 @@ router.get('/:id/history', authFlexible, async (req, res) => {
       orderBy: { tanggal: 'asc' }
     });
 
-    // Kumpulkan tahun ajaran yang benar-benar tercatat di database
+    // Kumpulkan tahun ajaran dari absensi DAN dari riwayat kelas
     const academicYearsSet = new Set();
     allRecords.forEach((rec) => {
       const d = new Date(rec.tanggal);
       const startYr = getAcademicStartYear(d.getUTCFullYear(), d.getUTCMonth() + 1);
       academicYearsSet.add(startYr);
     });
+    (murid.riwayatKelas || []).forEach((rk) => {
+      const match = String(rk.tahunAjaran || '').match(/^(\d{4})\s*\/\s*(\d{4})$/);
+      if (match) academicYearsSet.add(parseInt(match[1], 10));
+    });
 
     const sortedStartYears = Array.from(academicYearsSet).sort((a, b) => b - a);
     const availableTahunAjaran = sortedStartYears.map((yr) => `${yr}/${yr + 1}`);
 
-    // Tentukan tahun ajaran aktif yang dipilih
     const now = new Date();
     const fallbackStartYear = getAcademicStartYear(now.getFullYear(), now.getMonth() + 1);
     let selectedStartYear = sortedStartYears.length > 0 ? sortedStartYears[0] : fallbackStartYear;
@@ -269,10 +367,9 @@ router.get('/:id/history', authFlexible, async (req, res) => {
     }
 
     const selectedTahunAjaran = `${selectedStartYear}/${selectedStartYear + 1}`;
-    const rangeStart = new Date(Date.UTC(selectedStartYear, 6, 1)); // 1 Juli X
-    const rangeEnd = new Date(Date.UTC(selectedStartYear + 1, 5, 30, 23, 59, 59, 999)); // 30 Juni X+1
+    const rangeStart = new Date(Date.UTC(selectedStartYear, 6, 1));
+    const rangeEnd = new Date(Date.UTC(selectedStartYear + 1, 5, 30, 23, 59, 59, 999));
 
-    // Petakan rekaman dalam tahun ajaran terpilih per bulan
     const byMonthMap = {};
     allRecords.forEach((rec) => {
       const d = new Date(rec.tanggal);
@@ -337,20 +434,24 @@ router.get('/:id/history', authFlexible, async (req, res) => {
     };
     const totalAktifTahun = tahunanRekap.H + tahunanRekap.S + tahunanRekap.I + tahunanRekap.A;
 
+    const riwayatList = (murid.riwayatKelas || []).map((rk) => ({
+      tahun_ajaran: rk.tahunAjaran,
+      kelas_id: rk.kelasId,
+      nama_kelas: rk.namaKelas,
+      nama_wali_kelas: rk.namaWaliKelas || null
+    }));
+
+    const matchedRiwayat =
+      riwayatList.find((r) => r.tahun_ajaran === selectedTahunAjaran) || null;
+
     return res.status(200).json({
       success: true,
       data: {
-        murid: {
-          id: murid.id,
-          no_urut: murid.noUrut,
-          nama_murid: murid.namaMurid,
-          status: murid.status,
-          tahun_keluar: murid.tahunKeluar,
-          kelas_id: murid.kelasId,
-          nama_kelas: murid.kelas ? murid.kelas.namaKelas : null
-        },
+        murid: formatMurid(murid),
         tahun_ajaran: selectedTahunAjaran,
         available_tahun_ajaran: availableTahunAjaran,
+        kelas_tahun_ajaran: matchedRiwayat,
+        riwayat_kelas: riwayatList,
         semester: {
           ganjil,
           genap
@@ -377,13 +478,45 @@ router.get('/:id/history', authFlexible, async (req, res) => {
 // ==========================================
 router.post('/', authFlexible, async (req, res) => {
   try {
-    const { nama_murid, namaMurid, no_urut, noUrut, kelas_id, kelasId } = req.body;
+    const {
+      nama_murid,
+      namaMurid,
+      no_urut,
+      noUrut,
+      kelas_id,
+      kelasId,
+      nipd,
+      nisn,
+      nik,
+      tempat_lahir,
+      tempatLahir,
+      tanggal_lahir,
+      tanggalLahir,
+      alamat,
+      no_hp,
+      noHp
+    } = req.body;
+
     const namaTarget = (nama_murid || namaMurid || '').trim();
-    let targetKelasId = (kelas_id !== undefined ? kelas_id : kelasId) ? parseId(kelas_id || kelasId) : null;
-    let targetNoUrut = (no_urut !== undefined ? no_urut : noUrut) ? parseId(no_urut || noUrut) : null;
+    let targetKelasId = (kelas_id !== undefined ? kelas_id : kelasId)
+      ? parseId(kelas_id !== undefined ? kelas_id : kelasId)
+      : null;
+    let targetNoUrut = (no_urut !== undefined ? no_urut : noUrut)
+      ? parseId(no_urut !== undefined ? no_urut : noUrut)
+      : null;
 
     if (!namaTarget) {
       return res.status(400).json({ success: false, message: 'Nama murid wajib diisi' });
+    }
+
+    const parsedTgl = parseOptionalDate(
+      tanggal_lahir !== undefined ? tanggal_lahir : tanggalLahir
+    );
+    if (parsedTgl.invalid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Format tanggal lahir tidak valid (gunakan YYYY-MM-DD)'
+      });
     }
 
     // Otorisasi Wali Kelas vs Admin
@@ -391,9 +524,12 @@ router.post('/', authFlexible, async (req, res) => {
       if (!req.guru.kelas_id) {
         return res.status(403).json({ success: false, message: 'Akun Anda belum terhubung ke kelas manapun' });
       }
-      targetKelasId = req.guru.kelas_id; // Paksa ke kelas wali kelas
+      targetKelasId = req.guru.kelas_id;
     } else if (!req.isAdmin) {
-      return res.status(403).json({ success: false, message: 'Akses ditolak: Hanya Admin atau Wali Kelas yang dapat menambah murid' });
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak: Hanya Admin atau Wali Kelas yang dapat menambah murid'
+      });
     }
 
     if (!targetKelasId) {
@@ -405,7 +541,6 @@ router.post('/', authFlexible, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Kelas tidak ditemukan' });
     }
 
-    // Jika nomor urut tidak diisi, otomatis buat no_urut terakhir + 1 (dari murid aktif)
     if (!targetNoUrut) {
       const lastMurid = await prisma.murid.findFirst({
         where: { kelasId: targetKelasId, status: 'AKTIF' },
@@ -414,29 +549,39 @@ router.post('/', authFlexible, async (req, res) => {
       targetNoUrut = lastMurid ? lastMurid.noUrut + 1 : 1;
     }
 
-    const baru = await prisma.murid.create({
-      data: {
-        namaMurid: namaTarget,
-        noUrut: targetNoUrut,
+    const currentTA = getCurrentAcademicYear();
+
+    const baru = await prisma.$transaction(async (tx) => {
+      const created = await tx.murid.create({
+        data: {
+          namaMurid: namaTarget,
+          noUrut: targetNoUrut,
+          kelasId: targetKelasId,
+          tahunAjaranAktif: currentTA,
+          nipd: cleanOptStr(nipd) ?? null,
+          nisn: cleanOptStr(nisn) ?? null,
+          nik: cleanOptStr(nik) ?? null,
+          tempatLahir: cleanOptStr(tempat_lahir !== undefined ? tempat_lahir : tempatLahir) ?? null,
+          tanggalLahir: parsedTgl.provided ? parsedTgl.value : null,
+          alamat: cleanOptStr(alamat) ?? null,
+          noHp: cleanOptStr(no_hp !== undefined ? no_hp : noHp) ?? null
+        },
+        include: { kelas: true }
+      });
+
+      await upsertRiwayatKelas(tx, {
+        muridId: created.id,
+        tahunAjaran: currentTA,
         kelasId: targetKelasId
-      },
-      include: {
-        kelas: true
-      }
+      });
+
+      return created;
     });
 
     return res.status(201).json({
       success: true,
       message: `Murid '${baru.namaMurid}' berhasil ditambahkan ke kelas ${baru.kelas.namaKelas}`,
-      data: {
-        id: baru.id,
-        no_urut: baru.noUrut,
-        nama_murid: baru.namaMurid,
-        status: baru.status,
-        tahun_keluar: baru.tahunKeluar,
-        kelas_id: baru.kelasId,
-        nama_kelas: baru.kelas.namaKelas
-      }
+      data: formatMurid(baru)
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -445,12 +590,12 @@ router.post('/', authFlexible, async (req, res) => {
 
 // ==========================================
 // 4. POST /api/murid/bulk (Import Banyak Murid Sekaligus)
-// Format body:
-// { kelas_id: 1, murid: [ { nama_murid: "A", no_urut: 1 }, "Budi Santoso", ... ] }
 // ==========================================
 router.post('/bulk', authFlexible, async (req, res) => {
   try {
-    let targetKelasId = (req.body.kelas_id || req.body.kelasId) ? parseId(req.body.kelas_id || req.body.kelasId) : null;
+    let targetKelasId = (req.body.kelas_id || req.body.kelasId)
+      ? parseId(req.body.kelas_id || req.body.kelasId)
+      : null;
     const rawList = req.body.murid || req.body.data || req.body;
 
     if (!Array.isArray(rawList) || rawList.length === 0) {
@@ -460,7 +605,6 @@ router.post('/bulk', authFlexible, async (req, res) => {
       });
     }
 
-    // Otorisasi
     if (req.isGuru && req.guru.role === 'WALI_KELAS') {
       targetKelasId = req.guru.kelas_id;
     } else if (!req.isAdmin) {
@@ -471,19 +615,29 @@ router.post('/bulk', authFlexible, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Parameter kelas_id wajib diisi' });
     }
 
-    const kelas = await prisma.kelas.findUnique({ where: { id: targetKelasId } });
+    const kelas = await prisma.kelas.findUnique({
+      where: { id: targetKelasId },
+      include: {
+        guru: {
+          where: { role: 'WALI_KELAS' },
+          orderBy: { id: 'asc' },
+          take: 1
+        }
+      }
+    });
     if (!kelas) {
       return res.status(404).json({ success: false, message: 'Kelas tidak ditemukan' });
     }
 
-    // Cari no urut tertinggi yang aktif di kelas ini
     const lastMurid = await prisma.murid.findFirst({
       where: { kelasId: targetKelasId, status: 'AKTIF' },
       orderBy: { noUrut: 'desc' }
     });
     let currentNoUrut = lastMurid ? lastMurid.noUrut : 0;
+    const currentTA = getCurrentAcademicYear();
+    const wali = kelas.guru?.[0] || null;
 
-    const createOperations = [];
+    const prepared = [];
     for (let i = 0; i < rawList.length; i++) {
       const item = rawList[i];
       let nama = '';
@@ -503,24 +657,39 @@ router.post('/bulk', authFlexible, async (req, res) => {
         } else {
           currentNoUrut = Math.max(currentNoUrut, no);
         }
-
-        createOperations.push(
-          prisma.murid.create({
-            data: {
-              namaMurid: nama,
-              noUrut: no,
-              kelasId: targetKelasId
-            }
-          })
-        );
+        prepared.push({ namaMurid: nama, noUrut: no });
       }
     }
 
-    if (createOperations.length === 0) {
+    if (prepared.length === 0) {
       return res.status(400).json({ success: false, message: 'Tidak ada data nama murid yang valid dalam list' });
     }
 
-    const results = await prisma.$transaction(createOperations);
+    const results = await prisma.$transaction(async (tx) => {
+      const createdList = [];
+      for (const item of prepared) {
+        const created = await tx.murid.create({
+          data: {
+            namaMurid: item.namaMurid,
+            noUrut: item.noUrut,
+            kelasId: targetKelasId,
+            tahunAjaranAktif: currentTA
+          }
+        });
+        await tx.riwayatKelasMurid.create({
+          data: {
+            muridId: created.id,
+            tahunAjaran: currentTA,
+            kelasId: kelas.id,
+            namaKelas: kelas.namaKelas,
+            waliKelasId: wali ? wali.id : null,
+            namaWaliKelas: wali ? wali.namaGuru : null
+          }
+        });
+        createdList.push(created);
+      }
+      return createdList;
+    });
 
     return res.status(201).json({
       success: true,
@@ -533,8 +702,140 @@ router.post('/bulk', authFlexible, async (req, res) => {
 });
 
 // ==========================================
-// 5. PUT /api/murid/:id (Edit Data Murid)
-// Wali Kelas hanya bisa mengedit murid di kelas miliknya
+// 4B. POST /api/murid/promote (Kenaikan Kelas & Kelulusan Massal - Hanya Admin)
+// Body: { murid_ids: [1,2], aksi: "NAIK_KELAS" | "LULUS", target_kelas_id, tahun_ajaran_baru, tahun_keluar }
+// Catatan: Untuk NAIK_KELAS, nomor urut kelas tujuan otomatis diurutkan ulang berdasarkan abjad nama!
+// ==========================================
+router.post('/promote', authFlexible, async (req, res) => {
+  try {
+    if (!req.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak: Hanya Admin yang dapat memproses kenaikan kelas atau kelulusan'
+      });
+    }
+
+    const {
+      murid_ids,
+      muridIds,
+      aksi,
+      target_kelas_id,
+      targetKelasId,
+      tahun_ajaran_baru,
+      tahunAjaranBaru,
+      tahun_keluar,
+      tahunKeluar
+    } = req.body;
+
+    const rawIds = Array.isArray(murid_ids) ? murid_ids : muridIds;
+    const validIds = Array.isArray(rawIds)
+      ? [...new Set(rawIds.map((v) => parseId(v)).filter((v) => v !== null && v > 0))]
+      : [];
+
+    if (validIds.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pilih minimal 1 siswa untuk diproses'
+      });
+    }
+
+    const actionType = String(aksi || 'NAIK_KELAS').trim().toUpperCase();
+    if (!['NAIK_KELAS', 'LULUS'].includes(actionType)) {
+      return res.status(400).json({
+        success: false,
+        message: "Aksi tidak valid. Pilihan: 'NAIK_KELAS' atau 'LULUS'"
+      });
+    }
+
+    if (actionType === 'LULUS') {
+      const resolvedTahunKeluar = cleanOptStr(
+        tahun_keluar !== undefined
+          ? tahun_keluar
+          : tahunKeluar !== undefined
+            ? tahunKeluar
+            : tahun_ajaran_baru || tahunAjaranBaru
+      );
+
+      const updated = await prisma.murid.updateMany({
+        where: { id: { in: validIds } },
+        data: {
+          status: 'LULUS',
+          ...(resolvedTahunKeluar ? { tahunKeluar: resolvedTahunKeluar } : {})
+        }
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: `${updated.count} siswa berhasil diluluskan dan masuk ke arsip Alumni`,
+        count: updated.count
+      });
+    }
+
+    // Aksi NAIK_KELAS
+    const destKelasId = parseId(
+      target_kelas_id !== undefined ? target_kelas_id : targetKelasId
+    );
+    if (!destKelasId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Kelas tujuan wajib dipilih'
+      });
+    }
+
+    const destKelas = await prisma.kelas.findUnique({ where: { id: destKelasId } });
+    if (!destKelas) {
+      return res.status(404).json({ success: false, message: 'Kelas tujuan tidak ditemukan' });
+    }
+
+    const rawTA = cleanOptStr(
+      tahun_ajaran_baru !== undefined ? tahun_ajaran_baru : tahunAjaranBaru
+    );
+    const targetTA = rawTA || getCurrentAcademicYear();
+    if (!/^\d{4}\s*\/\s*\d{4}$/.test(targetTA)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Format Tahun Ajaran baru harus YYYY/YYYY (contoh: 2026/2027)'
+      });
+    }
+    const normalizedTA = targetTA.replace(/\s+/g, '');
+
+    const totalInDest = await prisma.$transaction(async (tx) => {
+      await tx.murid.updateMany({
+        where: { id: { in: validIds } },
+        data: {
+          kelasId: destKelasId,
+          status: 'AKTIF',
+          tahunKeluar: null,
+          tahunAjaranAktif: normalizedTA
+        }
+      });
+
+      for (const mId of validIds) {
+        await upsertRiwayatKelas(tx, {
+          muridId: mId,
+          tahunAjaran: normalizedTA,
+          kelasId: destKelasId
+        });
+      }
+
+      // Urutkan ulang no_urut berdasarkan abjad nama di kelas tujuan
+      return resequenceClassAlphabetically(tx, destKelasId);
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `${validIds.length} siswa berhasil dinaikkan ke Kelas ${destKelas.namaKelas} (TA ${normalizedTA}) dan diurutkan ulang sesuai abjad (${totalInDest} siswa aktif).`,
+      count: validIds.length,
+      total_kelas_tujuan: totalInDest
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ==========================================
+// 5. PUT /api/murid/:id (Edit Data & Biodata Murid)
+// Hak edit biodata: Wali Kelas masing-masing & Admin (Guru Mapel & Piket ditolak)
 // ==========================================
 router.put('/:id', authFlexible, async (req, res) => {
   try {
@@ -550,7 +851,6 @@ router.put('/:id', authFlexible, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Murid tidak ditemukan' });
     }
 
-    // Otorisasi: Jika Wali Kelas, hanya boleh edit jika murid berada di kelasnya
     if (req.isGuru && req.guru.role === 'WALI_KELAS') {
       if (existing.kelasId !== req.guru.kelas_id) {
         return res.status(403).json({
@@ -559,7 +859,10 @@ router.put('/:id', authFlexible, async (req, res) => {
         });
       }
     } else if (!req.isAdmin) {
-      return res.status(403).json({ success: false, message: 'Akses ditolak' });
+      return res.status(403).json({
+        success: false,
+        message: 'Akses ditolak: Hanya Admin atau Wali Kelas yang dapat mengedit data murid'
+      });
     }
 
     const {
@@ -571,13 +874,50 @@ router.put('/:id', authFlexible, async (req, res) => {
       kelasId,
       status,
       tahun_keluar,
-      tahunKeluar
+      tahunKeluar,
+      tahun_ajaran_aktif,
+      tahunAjaranAktif,
+      nipd,
+      nisn,
+      nik,
+      tempat_lahir,
+      tempatLahir,
+      tanggal_lahir,
+      tanggalLahir,
+      alamat,
+      no_hp,
+      noHp
     } = req.body;
+
     const updateData = {};
 
     if (nama_murid || namaMurid) updateData.namaMurid = (nama_murid || namaMurid).trim();
     if (no_urut !== undefined || noUrut !== undefined) {
       updateData.noUrut = parseId(no_urut !== undefined ? no_urut : noUrut);
+    }
+
+    // Biodata opsional (boleh diedit oleh Admin dan Wali Kelas)
+    if (nipd !== undefined) updateData.nipd = cleanOptStr(nipd);
+    if (nisn !== undefined) updateData.nisn = cleanOptStr(nisn);
+    if (nik !== undefined) updateData.nik = cleanOptStr(nik);
+    if (tempat_lahir !== undefined || tempatLahir !== undefined) {
+      updateData.tempatLahir = cleanOptStr(
+        tempat_lahir !== undefined ? tempat_lahir : tempatLahir
+      );
+    }
+    const parsedTgl = parseOptionalDate(
+      tanggal_lahir !== undefined ? tanggal_lahir : tanggalLahir
+    );
+    if (parsedTgl.invalid) {
+      return res.status(400).json({
+        success: false,
+        message: 'Format tanggal lahir tidak valid (gunakan YYYY-MM-DD)'
+      });
+    }
+    if (parsedTgl.provided) updateData.tanggalLahir = parsedTgl.value;
+    if (alamat !== undefined) updateData.alamat = cleanOptStr(alamat);
+    if (no_hp !== undefined || noHp !== undefined) {
+      updateData.noHp = cleanOptStr(no_hp !== undefined ? no_hp : noHp);
     }
 
     // Status keaktifan siswa & tahun keluar hanya bisa diubah oleh Admin
@@ -608,34 +948,51 @@ router.put('/:id', authFlexible, async (req, res) => {
       updateData.tahunKeluar = rawTahun ? String(rawTahun).trim() : null;
     }
 
-    // Hanya Admin yang boleh memindahkan kelas murid (misal: kenaikan kelas)
+    let movedToNewClass = false;
+    let targetKelas = existing.kelasId;
+
+    // Hanya Admin yang boleh memindahkan kelas murid
     if (req.isAdmin && (kelas_id !== undefined || kelasId !== undefined)) {
-      const targetKelas = parseId(kelas_id !== undefined ? kelas_id : kelasId);
-      if (targetKelas) {
-        const k = await prisma.kelas.findUnique({ where: { id: targetKelas } });
+      const parsedKelas = parseId(kelas_id !== undefined ? kelas_id : kelasId);
+      if (parsedKelas && parsedKelas !== existing.kelasId) {
+        const k = await prisma.kelas.findUnique({ where: { id: parsedKelas } });
         if (!k) return res.status(400).json({ success: false, message: 'Kelas tujuan tidak ditemukan' });
-        updateData.kelasId = targetKelas;
+        updateData.kelasId = parsedKelas;
+        targetKelas = parsedKelas;
+        movedToNewClass = true;
       }
     }
 
-    const updated = await prisma.murid.update({
-      where: { id },
-      data: updateData,
-      include: { kelas: true }
+    const explicitTA = cleanOptStr(
+      tahun_ajaran_aktif !== undefined ? tahun_ajaran_aktif : tahunAjaranAktif
+    );
+    const activeTA = explicitTA || existing.tahunAjaranAktif || getCurrentAcademicYear();
+    if (movedToNewClass || explicitTA) {
+      updateData.tahunAjaranAktif = explicitTA || getCurrentAcademicYear();
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const saved = await tx.murid.update({
+        where: { id },
+        data: updateData,
+        include: { kelas: true }
+      });
+
+      if (movedToNewClass || explicitTA) {
+        await upsertRiwayatKelas(tx, {
+          muridId: saved.id,
+          tahunAjaran: saved.tahunAjaranAktif || activeTA,
+          kelasId: targetKelas
+        });
+      }
+
+      return saved;
     });
 
     return res.status(200).json({
       success: true,
       message: 'Data murid berhasil diperbarui',
-      data: {
-        id: updated.id,
-        no_urut: updated.noUrut,
-        nama_murid: updated.namaMurid,
-        status: updated.status,
-        tahun_keluar: updated.tahunKeluar,
-        kelas_id: updated.kelasId,
-        nama_kelas: updated.kelas.namaKelas
-      }
+      data: formatMurid(updated)
     });
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
@@ -655,7 +1012,6 @@ router.delete('/:id', authFlexible, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Murid tidak ditemukan' });
     }
 
-    // Otorisasi: Jika Wali Kelas, hanya boleh hapus murid di kelasnya
     if (req.isGuru && req.guru.role === 'WALI_KELAS') {
       if (existing.kelasId !== req.guru.kelas_id) {
         return res.status(403).json({
@@ -679,4 +1035,3 @@ router.delete('/:id', authFlexible, async (req, res) => {
 });
 
 module.exports = router;
-

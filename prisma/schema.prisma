@@ -252,15 +252,16 @@ enum StatusMurid {
 
 // Tabel 1: Kelas (1A sampai 6B)
 model Kelas {
-  id        Int         @id @default(autoincrement())
-  namaKelas String      @unique @map("nama_kelas")
+  id           Int                 @id @default(autoincrement())
+  namaKelas    String              @unique @map("nama_kelas")
 
-  guru      Guru[]      @relation("WaliKelas")
-  guruMapel GuruKelas[]
-  murid     Murid[]
+  guru         Guru[]              @relation("WaliKelas")
+  guruMapel    GuruKelas[]
+  murid        Murid[]
+  riwayatMurid RiwayatKelasMurid[]
 
-  createdAt DateTime    @default(now()) @map("created_at")
-  updatedAt DateTime    @updatedAt @map("updated_at")
+  createdAt    DateTime            @default(now()) @map("created_at")
+  updatedAt    DateTime            @updatedAt @map("updated_at")
 
   @@map("kelas")
 }
@@ -297,21 +298,50 @@ model GuruKelas {
 
 // Tabel 3: Murid
 model Murid {
-  id          Int         @id @default(autoincrement())
-  namaMurid   String      @map("nama_murid")
-  noUrut      Int         @map("no_urut")
-  status      StatusMurid @default(AKTIF)
-  tahunKeluar String?     @map("tahun_keluar") // Opsional: tahun lulus atau tahun mutasi
-  kelasId     Int         @map("kelas_id")
-  kelas       Kelas       @relation(fields: [kelasId], references: [id], onDelete: Cascade)
+  id               Int                 @id @default(autoincrement())
+  namaMurid        String              @map("nama_murid")
+  noUrut           Int                 @map("no_urut")
+  nipd             String?
+  nisn             String?
+  nik              String?
+  tempatLahir      String?             @map("tempat_lahir")
+  tanggalLahir     DateTime?           @map("tanggal_lahir") @db.Date
+  alamat           String?             @db.Text
+  noHp             String?             @map("no_hp")
+  status           StatusMurid         @default(AKTIF)
+  tahunKeluar      String?             @map("tahun_keluar") // Opsional: tahun lulus atau tahun mutasi
+  tahunAjaranAktif String?             @map("tahun_ajaran_aktif") // Penanda tahun ajaran kelas saat ini
+  kelasId          Int                 @map("kelas_id")
+  kelas            Kelas               @relation(fields: [kelasId], references: [id], onDelete: Cascade)
 
-  absensi     Absensi[]
+  absensi          Absensi[]
+  riwayatKelas     RiwayatKelasMurid[]
 
-  createdAt   DateTime    @default(now()) @map("created_at")
-  updatedAt   DateTime    @updatedAt @map("updated_at")
+  createdAt        DateTime            @default(now()) @map("created_at")
+  updatedAt        DateTime            @updatedAt @map("updated_at")
 
   @@index([status])
   @@map("murid")
+}
+
+// Tabel 3B: Riwayat Kelas & Wali Kelas Murid per Tahun Ajaran
+model RiwayatKelasMurid {
+  id            Int      @id @default(autoincrement())
+  muridId       Int      @map("murid_id")
+  murid         Murid    @relation(fields: [muridId], references: [id], onDelete: Cascade)
+  tahunAjaran   String   @map("tahun_ajaran")
+  kelasId       Int?     @map("kelas_id")
+  kelas         Kelas?   @relation(fields: [kelasId], references: [id], onDelete: SetNull)
+  namaKelas     String   @map("nama_kelas")
+  waliKelasId   Int?     @map("wali_kelas_id")
+  namaWaliKelas String?  @map("nama_wali_kelas")
+
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@unique([muridId, tahunAjaran])
+  @@index([tahunAjaran])
+  @@map("riwayat_kelas_murid")
 }
 
 // Tabel 4: Absensi (Upsert harian)
