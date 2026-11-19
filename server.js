@@ -56,6 +56,7 @@ const absensiRouter = require('./routes/absensi');
 const kelasRouter = require('./routes/kelas');
 const guruRouter = require('./routes/guru');
 const muridRouter = require('./routes/murid');
+const tindakLanjutRouter = require('./routes/tindakLanjut');
 
 app.use('/api/schedules', schedulesRouter);
 app.use('/api', audioRouter);
@@ -63,6 +64,7 @@ app.use('/api/auth', authGuruRouter);
 app.use('/api/absensi', absensiRouter);
 app.use('/api/kelas', kelasRouter);
 app.use('/api/guru', guruRouter);
+app.use('/api/murid', tindakLanjutRouter);
 app.use('/api/murid', muridRouter);
 
 // Helper function untuk parsing tanggal aman

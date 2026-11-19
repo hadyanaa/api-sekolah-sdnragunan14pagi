@@ -48,9 +48,12 @@ services:
       - /dev/snd:/dev/snd
     volumes:
       - audio_data:/app/public/audio
+      - tindak_lanjut_data:/app/uploads/tindak-lanjut
 
 volumes:
   postgres_data:
     name: api_sekolah_postgres_data
   audio_data:
     name: api_sekolah_audio_data
+  tindak_lanjut_data:
+    name: api_sekolah_tindak_lanjut_data

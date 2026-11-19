@@ -242,6 +242,12 @@ enum StatusGuru {
   PENSIUN       // Purna tugas / pensiun
 }
 
+enum JenisTindakLanjut {
+  KARTU_REFLEKSI
+  PEMANGGILAN_ORTU
+  HOME_VISIT
+}
+
 enum StatusAbsensi {
   H // Hadir
   S // Sakit
@@ -359,6 +365,7 @@ model Murid {
 
   absensi          Absensi[]
   riwayatKelas     RiwayatKelasMurid[]
+  tindakLanjut     TindakLanjutMurid[]
 
   createdAt        DateTime            @default(now()) @map("created_at")
   updatedAt        DateTime            @updatedAt @map("updated_at")
@@ -385,6 +392,28 @@ model RiwayatKelasMurid {
   @@unique([muridId, tahunAjaran])
   @@index([tahunAjaran])
   @@map("riwayat_kelas_murid")
+}
+
+// Tabel 3C: Catatan Tindak Lanjut Siswa (Kartu Refleksi, Pemanggilan Ortu, Home Visit)
+model TindakLanjutMurid {
+  id             Int               @id @default(autoincrement())
+  muridId        Int               @map("murid_id")
+  murid          Murid             @relation(fields: [muridId], references: [id], onDelete: Cascade)
+  jenis          JenisTindakLanjut
+  tanggal        DateTime          @db.Date
+  catatan        String?           @db.Text
+  fileName       String?           @map("file_name")
+  filePath       String?           @map("file_path")
+  mimeType       String?           @map("mime_type")
+  fileSize       Int?              @map("file_size")
+  dibuatOlehId   Int?              @map("dibuat_oleh_id")
+  dibuatOlehNama String?           @map("dibuat_oleh_nama")
+
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+
+  @@index([muridId, tanggal])
+  @@map("tindak_lanjut_murid")
 }
 
 // Tabel 4: Absensi (Upsert harian)
